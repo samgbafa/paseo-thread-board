@@ -19,7 +19,7 @@ const initialThreads = [
     provider: "openai",
     model: "gpt-5.6-codex",
     updatedAt: ago(3),
-    lastActivityAt: ago(3),
+    lastMessageAt: ago(3),
   },
   {
     id: "migration",
@@ -34,7 +34,7 @@ const initialThreads = [
     provider: "anthropic",
     model: "claude-opus-5",
     updatedAt: ago(18),
-    lastActivityAt: ago(18),
+    lastMessageAt: ago(18),
   },
   {
     id: "thread-board",
@@ -49,7 +49,7 @@ const initialThreads = [
     provider: "openai",
     model: "gpt-5.6-codex",
     updatedAt: ago(1),
-    lastActivityAt: ago(1),
+    lastMessageAt: ago(1),
   },
   {
     id: "docs",
@@ -64,7 +64,7 @@ const initialThreads = [
     provider: "anthropic",
     model: "claude-sonnet-4.5",
     updatedAt: ago(7),
-    lastActivityAt: ago(7),
+    lastMessageAt: ago(7),
   },
   {
     id: "visual-check",
@@ -79,7 +79,7 @@ const initialThreads = [
     provider: "openai",
     model: "gpt-5.6-codex",
     updatedAt: ago(2),
-    lastActivityAt: ago(2),
+    lastMessageAt: ago(2),
   },
   {
     id: "sdk-audit",
@@ -94,7 +94,7 @@ const initialThreads = [
     provider: "openai",
     model: "gpt-5.5",
     updatedAt: ago(74),
-    lastActivityAt: ago(74),
+    lastMessageAt: ago(74),
   },
   {
     id: "observability",
@@ -109,12 +109,12 @@ const initialThreads = [
     provider: "anthropic",
     model: "claude-sonnet-4.5",
     updatedAt: ago(240),
-    lastActivityAt: ago(240),
+    lastMessageAt: ago(240),
   },
   {
     id: "stale",
     title: "Archive completed prototype after review",
-    status: "closed",
+    status: "idle",
     requiresAttention: false,
     attentionReason: null,
     pendingPermissionCount: 0,
@@ -123,8 +123,8 @@ const initialThreads = [
     workspaceName: "activity-prototype",
     provider: "openai",
     model: "gpt-5.5",
-    updatedAt: ago(8 * 24 * 60),
-    lastActivityAt: ago(8 * 24 * 60),
+    updatedAt: ago(1),
+    lastMessageAt: ago(8 * 24 * 60),
   },
 ];
 

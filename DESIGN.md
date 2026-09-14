@@ -16,8 +16,9 @@ the ceremony of a second task tracker.
 - Wide layouts show the visible lanes together, with independently virtualized vertical lists.
 - Compact layouts show horizontally scrollable status tabs and one virtualized lane at a time.
 - The lanes are Needs You, Running, Idle, and Stale. A thread becomes stale at seven days or more
-  since its last update; stale and subagent threads remain opt-in so the first view emphasizes
-  recently active top-level work.
+  since its last user message; metadata updates such as viewing a thread do not affect the clock.
+  Stale and subagent threads remain opt-in so the first view emphasizes recently active top-level
+  work.
 
 ## States and accessibility
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.1 — 2026-09-14
+
+- Base activity age, Stale classification, and lane sorting on Paseo's last user-message time so
+  opening a thread does not make it recent.
+
 ## 0.2.0 — 2026-09-14
 
 - Replace Closed with a seven-day Stale lane while keeping stale threads accessible.

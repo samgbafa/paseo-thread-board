@@ -25,7 +25,7 @@ function thread(overrides: Partial<BoardThread> = {}): BoardThread {
     provider: "openai",
     model: "gpt-5",
     updatedAt: "2026-09-14T11:00:00.000Z",
-    lastActivityAt: "2026-09-14T11:00:00.000Z",
+    lastMessageAt: "2026-09-14T11:00:00.000Z",
     ...overrides,
   };
 }
@@ -50,13 +50,13 @@ describe("laneOf", () => {
     const stale = thread({
       status: "running",
       requiresAttention: true,
-      lastActivityAt: "2026-09-07T12:00:00.000Z",
+      lastMessageAt: "2026-09-07T12:00:00.000Z",
     });
     expect(isStale(stale, NOW)).toBe(true);
     expect(laneOf(stale, NOW)).toBe("stale");
     expect(
       isStale(
-        thread({ lastActivityAt: new Date(NOW - 7 * 24 * 60 * 60 * 1_000 + 1).toISOString() }),
+        thread({ lastMessageAt: new Date(NOW - 7 * 24 * 60 * 60 * 1_000 + 1).toISOString() }),
         NOW,
       ),
     ).toBe(false);
@@ -65,14 +65,14 @@ describe("laneOf", () => {
 
 describe("board visibility", () => {
   const threads = [
-    thread({ id: "root", lastActivityAt: "2026-09-14T10:00:00.000Z" }),
+    thread({ id: "root", lastMessageAt: "2026-09-14T10:00:00.000Z" }),
     thread({
       id: "child",
       parentAgentId: "root",
       status: "running",
-      lastActivityAt: "2026-09-14T12:00:00.000Z",
+      lastMessageAt: "2026-09-14T12:00:00.000Z",
     }),
-    thread({ id: "stale", status: "closed", lastActivityAt: "2026-09-01T13:00:00.000Z" }),
+    thread({ id: "stale", status: "closed", lastMessageAt: "2026-09-01T13:00:00.000Z" }),
   ];
 
   it("defaults to active top-level threads", () => {

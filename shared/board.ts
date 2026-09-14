@@ -26,12 +26,12 @@ export interface BoardThread {
   provider: string;
   model: string | null;
   updatedAt: string;
-  lastActivityAt: string;
+  lastMessageAt: string;
 }
 
 export function isStale(thread: BoardThread, now = Date.now()): boolean {
-  const updatedAt = Date.parse(thread.lastActivityAt || thread.updatedAt);
-  return Number.isFinite(updatedAt) && now - updatedAt >= STALE_AFTER_MS;
+  const lastMessageAt = Date.parse(thread.lastMessageAt);
+  return Number.isFinite(lastMessageAt) && now - lastMessageAt >= STALE_AFTER_MS;
 }
 
 export function laneOf(thread: BoardThread, now = Date.now()): LaneId {
@@ -76,8 +76,8 @@ export function visibleThreads(
     .filter((thread) => options.includeSubagents || thread.parentAgentId === null)
     .filter((thread) => options.showStale || laneOf(thread, options.now) !== "stale")
     .sort((left, right) => {
-      const leftTime = Date.parse(left.lastActivityAt || left.updatedAt);
-      const rightTime = Date.parse(right.lastActivityAt || right.updatedAt);
+      const leftTime = Date.parse(left.lastMessageAt);
+      const rightTime = Date.parse(right.lastMessageAt);
       return (
         (Number.isFinite(rightTime) ? rightTime : 0) - (Number.isFinite(leftTime) ? leftTime : 0)
       );

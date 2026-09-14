@@ -436,9 +436,9 @@ export function ThreadBoardView({
     const lane = laneOf(thread, now);
     const statusColor = threadStatusColor(thread, now, theme);
     const children = childCounts.get(thread.id) ?? 0;
-    const age = relativeAge(thread.lastActivityAt, now);
+    const age = relativeAge(thread.lastMessageAt, now);
     const activityLabel =
-      age === "now" ? "active now" : age ? `active ${age} ago` : "activity unknown";
+      age === "now" ? "message sent now" : age ? `last message ${age} ago` : "message time unknown";
     const childLabel =
       children > 0 ? `, ${children} ${children === 1 ? "subagent" : "subagents"}` : "";
     const accessibleDescription = `${thread.title}, ${stateLabel(thread, now)}, ${placement(thread)}, ${modelLabel(thread)}, ${activityLabel}${childLabel}`;

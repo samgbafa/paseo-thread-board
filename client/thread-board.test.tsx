@@ -75,7 +75,7 @@ function thread(overrides: Partial<BoardThread> = {}): BoardThread {
     provider: "openai",
     model: "gpt-5",
     updatedAt: freshTimestamp,
-    lastActivityAt: freshTimestamp,
+    lastMessageAt: freshTimestamp,
     ...overrides,
   };
 }
@@ -134,7 +134,7 @@ describe("Thread Board happy path", () => {
           requiresAttention: false,
           attentionReason: null,
           updatedAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1_000).toISOString(),
-          lastActivityAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1_000).toISOString(),
+          lastMessageAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1_000).toISOString(),
         }),
       ],
       openAgent,
@@ -178,7 +178,7 @@ describe("Thread Board happy path", () => {
       requiresAttention: false,
       attentionReason: null,
       updatedAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1_000).toISOString(),
-      lastActivityAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1_000).toISOString(),
+      lastMessageAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1_000).toISOString(),
     });
     const renderer = renderBoard([staleThread], vi.fn(), onArchive);
 
@@ -227,7 +227,7 @@ describe("Thread Board happy path", () => {
           requiresAttention: false,
           attentionReason: null,
           updatedAt: staleTimestamp,
-          lastActivityAt: staleTimestamp,
+          lastMessageAt: staleTimestamp,
         }),
       ],
       vi.fn(),
@@ -271,7 +271,7 @@ describe("Thread Board happy path", () => {
           requiresAttention: false,
           attentionReason: null,
           updatedAt: staleTimestamp,
-          lastActivityAt: staleTimestamp,
+          lastMessageAt: staleTimestamp,
         }),
         thread({
           id: "second",
@@ -279,7 +279,7 @@ describe("Thread Board happy path", () => {
           requiresAttention: false,
           attentionReason: null,
           updatedAt: staleTimestamp,
-          lastActivityAt: staleTimestamp,
+          lastMessageAt: staleTimestamp,
         }),
       ],
       vi.fn(),

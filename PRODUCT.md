@@ -26,7 +26,8 @@ The plugin runs inside Paseo and reads the host's agent, workspace, and project 
 
 - One card represents one agent thread.
 - The lanes are Needs You, Running, Idle, and Stale.
-- A thread is stale when it has not been updated for seven days. Stale is hidden by default.
+- A thread is stale when no user message has been sent for seven days. Viewing a thread does not
+  affect this clock. Stale is hidden by default.
 - Top-level threads are shown by default. Users can include subagents; top-level cards show their subagent count.
 - Selecting any card opens the real Paseo thread. Stale cards can also be archived after confirmation.
 - Archived means closed for this board: archived threads leave the board and remain available through Paseo's archive/history surfaces.

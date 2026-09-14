@@ -32,7 +32,7 @@ function parentAgentId(agent: Agent): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
-function toBoardThread(
+export function toBoardThread(
   agent: Agent,
   project: Project | null | undefined,
   existing?: BoardThread,
@@ -52,7 +52,7 @@ function toBoardThread(
     provider: agent.provider,
     model: agent.model,
     updatedAt: agent.updatedAt,
-    lastActivityAt: agent.updatedAt,
+    lastMessageAt: agent.lastUserMessageAt ?? agent.createdAt,
   };
 }
 
