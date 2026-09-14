@@ -5,7 +5,7 @@ import { ThreadBoardView } from "../client/thread-board";
 const now = new Date();
 const ago = (minutes) => new Date(now.getTime() - minutes * 60_000).toISOString();
 
-const threads = [
+const initialThreads = [
   {
     id: "release-review",
     title: "Review release notes and approve the final publish",
@@ -112,8 +112,8 @@ const threads = [
     lastActivityAt: ago(240),
   },
   {
-    id: "closed",
-    title: "Prototype workspace activity view",
+    id: "stale",
+    title: "Archive completed prototype after review",
     status: "closed",
     requiresAttention: false,
     attentionReason: null,
@@ -123,8 +123,8 @@ const threads = [
     workspaceName: "activity-prototype",
     provider: "openai",
     model: "gpt-5.5",
-    updatedAt: ago(1_440),
-    lastActivityAt: ago(1_440),
+    updatedAt: ago(8 * 24 * 60),
+    lastActivityAt: ago(8 * 24 * 60),
   },
 ];
 
@@ -146,6 +146,7 @@ const theme = {
 
 function Preview() {
   const [compact, setCompact] = useState(window.innerWidth < 720);
+  const [threads, setThreads] = useState(initialThreads);
 
   useEffect(() => {
     const update = () => setCompact(window.innerWidth < 720);
@@ -167,6 +168,9 @@ function Preview() {
       error={null}
       refreshing={false}
       onRefresh={() => undefined}
+      onArchive={async (threadId) => {
+        setThreads((current) => current.filter((thread) => thread.id !== threadId));
+      }}
     />
   );
 }

@@ -2,11 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   type BoardThread,
   countChildren,
+  isStale,
   laneOf,
   relativeAge,
   stateLabel,
   visibleThreads,
 } from "./board";
+
+const NOW = Date.parse("2026-09-14T12:00:00.000Z");
 
 function thread(overrides: Partial<BoardThread> = {}): BoardThread {
   return {
@@ -29,18 +32,34 @@ function thread(overrides: Partial<BoardThread> = {}): BoardThread {
 
 describe("laneOf", () => {
   it("puts permission, error, and finished attention ahead of runtime status", () => {
-    expect(laneOf(thread({ status: "running", pendingPermissionCount: 1 }))).toBe("attention");
-    expect(laneOf(thread({ status: "error" }))).toBe("attention");
-    expect(laneOf(thread({ requiresAttention: true, attentionReason: "finished" }))).toBe(
+    expect(laneOf(thread({ status: "running", pendingPermissionCount: 1 }), NOW)).toBe("attention");
+    expect(laneOf(thread({ status: "error" }), NOW)).toBe("attention");
+    expect(laneOf(thread({ requiresAttention: true, attentionReason: "finished" }), NOW)).toBe(
       "attention",
     );
   });
 
-  it("maps active and terminal states to their lanes", () => {
-    expect(laneOf(thread({ status: "initializing" }))).toBe("running");
-    expect(laneOf(thread({ status: "running" }))).toBe("running");
-    expect(laneOf(thread({ status: "idle" }))).toBe("idle");
-    expect(laneOf(thread({ status: "closed", requiresAttention: true }))).toBe("closed");
+  it("maps fresh runtime states to their lanes", () => {
+    expect(laneOf(thread({ status: "initializing" }), NOW)).toBe("running");
+    expect(laneOf(thread({ status: "running" }), NOW)).toBe("running");
+    expect(laneOf(thread({ status: "idle" }), NOW)).toBe("idle");
+    expect(laneOf(thread({ status: "closed" }), NOW)).toBe("idle");
+  });
+
+  it("puts every thread without an update for seven days in Stale", () => {
+    const stale = thread({
+      status: "running",
+      requiresAttention: true,
+      lastActivityAt: "2026-09-07T12:00:00.000Z",
+    });
+    expect(isStale(stale, NOW)).toBe(true);
+    expect(laneOf(stale, NOW)).toBe("stale");
+    expect(
+      isStale(
+        thread({ lastActivityAt: new Date(NOW - 7 * 24 * 60 * 60 * 1_000 + 1).toISOString() }),
+        NOW,
+      ),
+    ).toBe(false);
   });
 });
 
@@ -53,29 +72,34 @@ describe("board visibility", () => {
       status: "running",
       lastActivityAt: "2026-09-14T12:00:00.000Z",
     }),
-    thread({ id: "closed", status: "closed", lastActivityAt: "2026-09-14T13:00:00.000Z" }),
+    thread({ id: "stale", status: "closed", lastActivityAt: "2026-09-01T13:00:00.000Z" }),
   ];
 
   it("defaults to active top-level threads", () => {
     expect(
-      visibleThreads(threads, { includeSubagents: false, showClosed: false }).map(({ id }) => id),
+      visibleThreads(threads, { includeSubagents: false, showStale: false, now: NOW }).map(
+        ({ id }) => id,
+      ),
     ).toEqual(["root"]);
   });
 
-  it("can include subagents and closed threads in activity order", () => {
+  it("can include subagents and stale threads in activity order", () => {
     expect(
-      visibleThreads(threads, { includeSubagents: true, showClosed: true }).map(({ id }) => id),
-    ).toEqual(["closed", "child", "root"]);
+      visibleThreads(threads, { includeSubagents: true, showStale: true, now: NOW }).map(
+        ({ id }) => id,
+      ),
+    ).toEqual(["child", "root", "stale"]);
     expect(countChildren(threads).get("root")).toBe(1);
   });
 });
 
 describe("labels", () => {
   it("describes the attention reason without relying on color", () => {
-    expect(stateLabel(thread({ pendingPermissionCount: 2 }))).toBe("2 permissions requested");
-    expect(stateLabel(thread({ attentionReason: "finished", requiresAttention: true }))).toBe(
+    expect(stateLabel(thread({ pendingPermissionCount: 2 }), NOW)).toBe("2 permissions requested");
+    expect(stateLabel(thread({ attentionReason: "finished", requiresAttention: true }), NOW)).toBe(
       "Finished",
     );
+    expect(stateLabel(thread({ status: "closed" }), NOW)).toBe("Stopped");
   });
 
   it("formats compact relative age", () => {

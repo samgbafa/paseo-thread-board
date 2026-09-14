@@ -1,14 +1,16 @@
 export const PARENT_AGENT_ID_LABEL = "paseo.parent-agent-id";
 
-export type LaneId = "attention" | "running" | "idle" | "closed";
+export const STALE_AFTER_MS = 7 * 24 * 60 * 60 * 1_000;
 
-export const LANES: readonly LaneId[] = ["attention", "running", "idle", "closed"];
+export type LaneId = "attention" | "running" | "idle" | "stale";
+
+export const LANES: readonly LaneId[] = ["attention", "running", "idle", "stale"];
 
 export const LANE_TITLES: Record<LaneId, string> = {
   attention: "Needs You",
   running: "Running",
   idle: "Idle",
-  closed: "Closed",
+  stale: "Stale",
 };
 
 export interface BoardThread {
@@ -27,8 +29,13 @@ export interface BoardThread {
   lastActivityAt: string;
 }
 
-export function laneOf(thread: BoardThread): LaneId {
-  if (thread.status === "closed") return "closed";
+export function isStale(thread: BoardThread, now = Date.now()): boolean {
+  const updatedAt = Date.parse(thread.lastActivityAt || thread.updatedAt);
+  return Number.isFinite(updatedAt) && now - updatedAt >= STALE_AFTER_MS;
+}
+
+export function laneOf(thread: BoardThread, now = Date.now()): LaneId {
+  if (isStale(thread, now)) return "stale";
   if (thread.requiresAttention || thread.status === "error" || thread.pendingPermissionCount > 0) {
     return "attention";
   }
@@ -36,7 +43,8 @@ export function laneOf(thread: BoardThread): LaneId {
   return "idle";
 }
 
-export function stateLabel(thread: BoardThread): string {
+export function stateLabel(thread: BoardThread, now = Date.now()): string {
+  if (isStale(thread, now)) return "Stale";
   if (thread.pendingPermissionCount > 0) {
     return thread.pendingPermissionCount === 1
       ? "Permission requested"
@@ -47,7 +55,7 @@ export function stateLabel(thread: BoardThread): string {
   if (thread.attentionReason === "permission") return "Permission requested";
   if (thread.status === "initializing") return "Starting";
   if (thread.status === "running") return "Running";
-  if (thread.status === "closed") return "Closed";
+  if (thread.status === "closed") return "Stopped";
   return "Idle";
 }
 
@@ -62,11 +70,11 @@ export function countChildren(threads: readonly BoardThread[]): ReadonlyMap<stri
 
 export function visibleThreads(
   threads: readonly BoardThread[],
-  options: { includeSubagents: boolean; showClosed: boolean },
+  options: { includeSubagents: boolean; showStale: boolean; now?: number },
 ): BoardThread[] {
   return threads
     .filter((thread) => options.includeSubagents || thread.parentAgentId === null)
-    .filter((thread) => options.showClosed || laneOf(thread) !== "closed")
+    .filter((thread) => options.showStale || laneOf(thread, options.now) !== "stale")
     .sort((left, right) => {
       const leftTime = Date.parse(left.lastActivityAt || left.updatedAt);
       const rightTime = Date.parse(right.lastActivityAt || right.updatedAt);

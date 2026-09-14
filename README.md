@@ -7,16 +7,18 @@ each card's lane directly from Paseo, so there is no second task status to maint
 
 ## What it does
 
-- Places live agent threads into **Needs You**, **Running**, **Idle**, and **Closed**.
-- Keeps Closed hidden by default so active work stays in focus.
+- Places live agent threads into **Needs You**, **Running**, **Idle**, and **Stale**.
+- Treats threads with no update in the last seven days as Stale and keeps them hidden by default.
 - Shows top-level threads by default, with a subagent count and an **Include subagents** toggle.
 - Shows project, workspace, provider, model, attention reason, and recent activity on each card.
 - Opens the real Paseo thread when you select a card.
+- Archives stale threads from the board after confirmation; archived threads leave the board.
 - Updates from Paseo's agent-directory subscription, with a 30-second refresh backstop.
 - Uses full columns on wide clients and lane tabs on compact clients.
 
-The first release is intentionally read-only. Lane placement reflects the thread's real runtime
-state; cards cannot be dragged into a state that Paseo does not have.
+Lane placement reflects the thread's real runtime state and last update; cards cannot be dragged
+into a state that Paseo does not have. Stale threads remain accessible until you explicitly archive
+them. Archived threads remain available through Paseo's archive/history surfaces.
 
 ## Lane rules
 
@@ -25,7 +27,7 @@ state; cards cannot be dragged into a state that Paseo does not have.
 | Needs You | Permission requested, error, finished turn awaiting review, or `requiresAttention` |
 | Running | `running` or `initializing` |
 | Idle | `idle` without an attention signal |
-| Closed | `closed` |
+| Stale | No update for seven days, regardless of the prior runtime state |
 
 ## Install
 

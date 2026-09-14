@@ -61,6 +61,7 @@ const theme = {
 };
 
 function thread(overrides: Partial<BoardThread> = {}): BoardThread {
+  const freshTimestamp = new Date().toISOString();
   return {
     id: "root",
     title: "Review the release",
@@ -73,13 +74,17 @@ function thread(overrides: Partial<BoardThread> = {}): BoardThread {
     workspaceName: "thread-board",
     provider: "openai",
     model: "gpt-5",
-    updatedAt: "2026-09-14T12:00:00.000Z",
-    lastActivityAt: "2026-09-14T12:00:00.000Z",
+    updatedAt: freshTimestamp,
+    lastActivityAt: freshTimestamp,
     ...overrides,
   };
 }
 
-function renderBoard(threads: readonly BoardThread[], openAgent = vi.fn()): ReactTestRenderer {
+function renderBoard(
+  threads: readonly BoardThread[],
+  openAgent = vi.fn(),
+  onArchive: (threadId: string) => Promise<void> = vi.fn(async () => undefined),
+): ReactTestRenderer {
   let renderer: ReactTestRenderer | undefined;
   act(() => {
     renderer = create(
@@ -93,6 +98,7 @@ function renderBoard(threads: readonly BoardThread[], openAgent = vi.fn()): Reac
         error={null}
         refreshing={false}
         onRefresh={vi.fn()}
+        onArchive={onArchive}
       />,
     );
   });
@@ -122,11 +128,13 @@ describe("Thread Board happy path", () => {
           attentionReason: null,
         }),
         thread({
-          id: "closed",
+          id: "stale",
           title: "Old migration",
           status: "closed",
           requiresAttention: false,
           attentionReason: null,
+          updatedAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1_000).toISOString(),
+          lastActivityAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1_000).toISOString(),
         }),
       ],
       openAgent,
@@ -149,9 +157,168 @@ describe("Thread Board happy path", () => {
     expect(findCard(renderer, "Run verification")).toBeTruthy();
 
     act(() => {
-      renderer.root.findByProps({ accessibilityLabel: "Show closed threads" }).props.onPress();
+      renderer.root.findByProps({ accessibilityLabel: "Show stale threads" }).props.onPress();
+    });
+    expect(findCard(renderer, "Old migration").props.accessibilityLabel).toContain("Stale");
+
+    act(() => {
+      findCard(renderer, "Old migration").props.onPress();
+    });
+    expect(openAgent).toHaveBeenCalledWith({ agentId: "stale" });
+
+    act(() => renderer.unmount());
+  });
+
+  it("confirms before archiving a stale thread and removes it only after success", async () => {
+    const onArchive = vi.fn(async (_threadId: string) => undefined);
+    const staleThread = thread({
+      id: "stale",
+      title: "Old migration",
+      status: "closed",
+      requiresAttention: false,
+      attentionReason: null,
+      updatedAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1_000).toISOString(),
+      lastActivityAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1_000).toISOString(),
+    });
+    const renderer = renderBoard([staleThread], vi.fn(), onArchive);
+
+    act(() => {
+      renderer.root.findByProps({ accessibilityLabel: "Show stale threads" }).props.onPress();
+    });
+    act(() => {
+      renderer.root.findByProps({ accessibilityLabel: "Archive Old migration" }).props.onPress();
+    });
+    expect(onArchive).not.toHaveBeenCalled();
+    expect(renderer.root.findByProps({ children: "Archive this thread?" })).toBeTruthy();
+
+    act(() => {
+      renderer.root
+        .findByProps({ accessibilityLabel: "Cancel archiving Old migration" })
+        .props.onPress();
     });
     expect(findCard(renderer, "Old migration")).toBeTruthy();
+
+    act(() => {
+      renderer.root.findByProps({ accessibilityLabel: "Archive Old migration" }).props.onPress();
+    });
+    await act(async () => {
+      renderer.root
+        .findByProps({ accessibilityLabel: "Confirm archive Old migration" })
+        .props.onPress();
+    });
+
+    expect(onArchive).toHaveBeenCalledWith("stale");
+    expect(() => findCard(renderer, "Old migration")).toThrow();
+    expect(renderer.root.findByProps({ children: "Archived Old migration." })).toBeTruthy();
+
+    act(() => renderer.unmount());
+  });
+
+  it("keeps a stale thread visible when archiving fails", async () => {
+    const onArchive = vi.fn(async () => {
+      throw new Error("Host unavailable.");
+    });
+    const staleTimestamp = new Date(Date.now() - 8 * 24 * 60 * 60 * 1_000).toISOString();
+    const renderer = renderBoard(
+      [
+        thread({
+          id: "stale",
+          title: "Old migration",
+          requiresAttention: false,
+          attentionReason: null,
+          updatedAt: staleTimestamp,
+          lastActivityAt: staleTimestamp,
+        }),
+      ],
+      vi.fn(),
+      onArchive,
+    );
+
+    act(() => {
+      renderer.root.findByProps({ accessibilityLabel: "Show stale threads" }).props.onPress();
+    });
+    act(() => {
+      renderer.root.findByProps({ accessibilityLabel: "Archive Old migration" }).props.onPress();
+    });
+    await act(async () => {
+      renderer.root
+        .findByProps({ accessibilityLabel: "Confirm archive Old migration" })
+        .props.onPress();
+    });
+
+    expect(findCard(renderer, "Old migration")).toBeTruthy();
+    expect(renderer.root.findByProps({ accessibilityRole: "alert" }).props.children).toContain(
+      "Could not archive Old migration. Host unavailable.",
+    );
+
+    act(() => renderer.unmount());
+  });
+
+  it("blocks competing archive requests until the pending archive settles", async () => {
+    let resolveArchive: (() => void) | undefined;
+    const onArchive = vi.fn(
+      async () =>
+        new Promise<void>((resolve) => {
+          resolveArchive = resolve;
+        }),
+    );
+    const staleTimestamp = new Date(Date.now() - 8 * 24 * 60 * 60 * 1_000).toISOString();
+    const renderer = renderBoard(
+      [
+        thread({
+          id: "first",
+          title: "First stale thread",
+          requiresAttention: false,
+          attentionReason: null,
+          updatedAt: staleTimestamp,
+          lastActivityAt: staleTimestamp,
+        }),
+        thread({
+          id: "second",
+          title: "Second stale thread",
+          requiresAttention: false,
+          attentionReason: null,
+          updatedAt: staleTimestamp,
+          lastActivityAt: staleTimestamp,
+        }),
+      ],
+      vi.fn(),
+      onArchive,
+    );
+
+    act(() => {
+      renderer.root.findByProps({ accessibilityLabel: "Show stale threads" }).props.onPress();
+    });
+    act(() => {
+      renderer.root
+        .findByProps({ accessibilityLabel: "Archive First stale thread" })
+        .props.onPress();
+    });
+    await act(async () => {
+      renderer.root
+        .findByProps({ accessibilityLabel: "Confirm archive First stale thread" })
+        .props.onPress();
+      await Promise.resolve();
+    });
+
+    const competingArchive = renderer.root.findByProps({
+      accessibilityLabel: "Archive Second stale thread",
+    });
+    expect(competingArchive.props.disabled).toBe(true);
+    act(() => competingArchive.props.onPress());
+    expect(onArchive).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveArchive?.();
+      await Promise.resolve();
+    });
+
+    expect(() => findCard(renderer, "First stale thread")).toThrow();
+    expect(findCard(renderer, "Second stale thread")).toBeTruthy();
+    expect(
+      renderer.root.findByProps({ accessibilityLabel: "Archive Second stale thread" }).props
+        .disabled,
+    ).toBe(false);
 
     act(() => renderer.unmount());
   });
@@ -170,6 +337,7 @@ describe("Thread Board happy path", () => {
           error={null}
           refreshing={false}
           onRefresh={vi.fn()}
+          onArchive={vi.fn(async () => undefined)}
         />,
       );
     });
@@ -204,6 +372,7 @@ describe("Thread Board happy path", () => {
           error={null}
           refreshing={false}
           onRefresh={vi.fn()}
+          onArchive={vi.fn(async () => undefined)}
         />,
       );
     });
@@ -220,6 +389,7 @@ describe("Thread Board happy path", () => {
           error="Host unavailable."
           refreshing={false}
           onRefresh={vi.fn()}
+          onArchive={vi.fn(async () => undefined)}
         />,
       );
     });

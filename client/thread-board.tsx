@@ -9,7 +9,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import { usePaseo } from "@getpaseo/plugin/client";
 import { Icon } from "@getpaseo/plugin/client/react-native";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -40,6 +40,7 @@ interface ThreadBoardViewProps extends PluginSurfaceProps {
   error: string | null;
   refreshing: boolean;
   onRefresh(): void;
+  onArchive(threadId: string): Promise<void>;
 }
 
 function laneColor(lane: LaneId, theme: PluginSurfaceProps["theme"]): string {
@@ -48,11 +49,16 @@ function laneColor(lane: LaneId, theme: PluginSurfaceProps["theme"]): string {
   return theme.colors.foregroundMuted;
 }
 
-function threadStatusColor(thread: BoardThread, theme: PluginSurfaceProps["theme"]): string {
-  if (thread.status === "error" || thread.attentionReason === "error") {
+function threadStatusColor(
+  thread: BoardThread,
+  now: number,
+  theme: PluginSurfaceProps["theme"],
+): string {
+  const lane = laneOf(thread, now);
+  if (lane !== "stale" && (thread.status === "error" || thread.attentionReason === "error")) {
     return theme.colors.statusDanger;
   }
-  return laneColor(laneOf(thread), theme);
+  return laneColor(lane, theme);
 }
 
 function placement(thread: BoardThread): string {
@@ -69,7 +75,16 @@ function modelLabel(thread: BoardThread): string {
 export function ThreadBoardSurface(props: PluginSurfaceProps) {
   const paseo = usePaseo();
   const directory = useThreadDirectory(paseo, props.host.id);
-  return <ThreadBoardView {...props} {...directory} onRefresh={directory.refresh} />;
+  return (
+    <ThreadBoardView
+      {...props}
+      {...directory}
+      onRefresh={directory.refresh}
+      onArchive={async (threadId) => {
+        await paseo.agents.ref(threadId).archive();
+      }}
+    />
+  );
 }
 
 export function ThreadBoardView({
@@ -82,11 +97,20 @@ export function ThreadBoardView({
   error,
   refreshing,
   onRefresh,
+  onArchive,
 }: ThreadBoardViewProps) {
   const [includeSubagents, setIncludeSubagents] = useState(false);
-  const [showClosed, setShowClosed] = useState(false);
+  const [showStale, setShowStale] = useState(false);
   const [compactLane, setCompactLane] = useState<LaneId>("attention");
   const [now, setNow] = useState(() => Date.now());
+  const [confirmingArchiveId, setConfirmingArchiveId] = useState<string | null>(null);
+  const [archivingId, setArchivingId] = useState<string | null>(null);
+  const archiveInFlightId = useRef<string | null>(null);
+  const [locallyArchivedIds, setLocallyArchivedIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const [archiveError, setArchiveError] = useState<string | null>(null);
+  const [archiveNotice, setArchiveNotice] = useState<string | null>(null);
 
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), CLOCK_INTERVAL_MS);
@@ -159,6 +183,13 @@ export function ThreadBoardView({
       error: {
         color: colors.statusDanger,
         backgroundColor: colors.surface1,
+        paddingHorizontal: gutter,
+        paddingVertical: 10,
+        fontSize: 13,
+      },
+      notice: {
+        color: colors.foreground,
+        backgroundColor: colors.surface2,
         paddingHorizontal: gutter,
         paddingVertical: 10,
         fontSize: 13,
@@ -242,11 +273,11 @@ export function ThreadBoardView({
       laneList: { flex: 1 },
       card: {
         minHeight: 116,
-        padding: 12,
-        gap: 8,
         borderRadius: 12,
         backgroundColor: colors.surface0,
+        overflow: "hidden" as const,
       },
+      cardOpen: { padding: 12, gap: 8 },
       cardPressed: { backgroundColor: colors.surface2 },
       cardCompact: {
         backgroundColor: colors.surface1,
@@ -271,37 +302,82 @@ export function ThreadBoardView({
       cardBottom: { flexDirection: "row" as const, alignItems: "center" as const, gap: 8 },
       model: { flex: 1, color: colors.foregroundMuted, fontSize: 11 },
       childCount: { color: colors.foregroundMuted, fontSize: 11 },
+      archiveRow: {
+        minHeight: controlHeight,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderTopWidth: 1,
+        borderTopColor: colors.border,
+        flexDirection: "row" as const,
+        alignItems: "center" as const,
+        justifyContent: "flex-end" as const,
+        gap: 7,
+      },
+      archivePrompt: {
+        flex: 1,
+        color: colors.foregroundMuted,
+        fontSize: 12,
+        lineHeight: 16,
+      },
+      archiveButton: {
+        minHeight: controlHeight,
+        paddingHorizontal: 10,
+        borderRadius: 9,
+        borderWidth: 1,
+        borderColor: colors.border,
+        flexDirection: "row" as const,
+        alignItems: "center" as const,
+        justifyContent: "center" as const,
+        gap: 6,
+      },
+      archiveButtonDanger: { borderColor: colors.statusDanger, backgroundColor: colors.surface2 },
+      archiveButtonText: {
+        color: colors.foregroundMuted,
+        fontSize: 12,
+        fontWeight: "600" as const,
+      },
+      archiveButtonTextDanger: {
+        color: colors.statusDanger,
+        fontSize: 12,
+        fontWeight: "600" as const,
+      },
       empty: { paddingHorizontal: 12, paddingVertical: 20, alignItems: "center" as const, gap: 5 },
       emptyTitle: { color: colors.foreground, fontSize: 13, fontWeight: "600" as const },
       emptyCopy: { color: colors.foregroundMuted, fontSize: 12, textAlign: "center" as const },
     };
   }, [layout.compact, layout.platform, theme]);
 
-  const childCounts = useMemo(() => countChildren(threads), [threads]);
+  const availableThreads = useMemo(
+    () => threads.filter((thread) => !locallyArchivedIds.has(thread.id)),
+    [locallyArchivedIds, threads],
+  );
+  const childCounts = useMemo(() => countChildren(availableThreads), [availableThreads]);
   const visible = useMemo(
-    () => visibleThreads(threads, { includeSubagents, showClosed }),
-    [includeSubagents, showClosed, threads],
+    () => visibleThreads(availableThreads, { includeSubagents, showStale, now }),
+    [availableThreads, includeSubagents, now, showStale],
   );
   const lanes = useMemo(() => {
     const result: Record<LaneId, BoardThread[]> = {
       attention: [],
       running: [],
       idle: [],
-      closed: [],
+      stale: [],
     };
-    for (const thread of visible) result[laneOf(thread)].push(thread);
+    for (const thread of visible) result[laneOf(thread, now)].push(thread);
     return result;
-  }, [visible]);
-  const shownLanes = showClosed ? LANES : LANES.filter((lane) => lane !== "closed");
-  const childTotal = threads.filter((thread) => thread.parentAgentId !== null).length;
-  const closedTotal = threads.filter(
-    (thread) => laneOf(thread) === "closed" && (includeSubagents || thread.parentAgentId === null),
+  }, [now, visible]);
+  const shownLanes = showStale ? LANES : LANES.filter((lane) => lane !== "stale");
+  const childTotal = availableThreads.filter((thread) => thread.parentAgentId !== null).length;
+  const staleTotal = availableThreads.filter(
+    (thread) =>
+      laneOf(thread, now) === "stale" && (includeSubagents || thread.parentAgentId === null),
   ).length;
-  const activeTotal = visible.filter((thread) => laneOf(thread) !== "closed").length;
+  const activeTotal = visible.filter((thread) => laneOf(thread, now) !== "stale").length;
 
-  const toggleClosed = () => {
-    setShowClosed((current) => {
-      if (current && compactLane === "closed") setCompactLane("attention");
+  const toggleStale = () => {
+    setShowStale((current) => {
+      if (current && compactLane === "stale") setCompactLane("attention");
+      if (current) setConfirmingArchiveId(null);
       return !current;
     });
   };
@@ -334,20 +410,45 @@ export function ThreadBoardView({
     </Pressable>
   );
 
+  const archiveThread = async (thread: BoardThread) => {
+    if (archiveInFlightId.current !== null) return;
+    archiveInFlightId.current = thread.id;
+    setArchivingId(thread.id);
+    setArchiveError(null);
+    setArchiveNotice(null);
+    try {
+      await onArchive(thread.id);
+      setLocallyArchivedIds((current) => new Set(current).add(thread.id));
+      setConfirmingArchiveId(null);
+      setArchiveNotice(`Archived ${thread.title}.`);
+    } catch (cause) {
+      const detail = cause instanceof Error && cause.message ? ` ${cause.message}` : "";
+      setArchiveError(`Could not archive ${thread.title}.${detail}`);
+    } finally {
+      if (archiveInFlightId.current === thread.id) {
+        archiveInFlightId.current = null;
+        setArchivingId(null);
+      }
+    }
+  };
+
   const renderCard = (thread: BoardThread) => {
-    const statusColor = threadStatusColor(thread, theme);
+    const lane = laneOf(thread, now);
+    const statusColor = threadStatusColor(thread, now, theme);
     const children = childCounts.get(thread.id) ?? 0;
     const age = relativeAge(thread.lastActivityAt, now);
     const activityLabel =
       age === "now" ? "active now" : age ? `active ${age} ago` : "activity unknown";
     const childLabel =
       children > 0 ? `, ${children} ${children === 1 ? "subagent" : "subagents"}` : "";
-    const accessibleDescription = `${thread.title}, ${stateLabel(thread)}, ${placement(thread)}, ${modelLabel(thread)}, ${activityLabel}${childLabel}`;
+    const accessibleDescription = `${thread.title}, ${stateLabel(thread, now)}, ${placement(thread)}, ${modelLabel(thread)}, ${activityLabel}${childLabel}`;
     const content = (
       <>
         <View style={styles.cardTop}>
           <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-          <Text style={[styles.statusLabel, { color: statusColor }]}>{stateLabel(thread)}</Text>
+          <Text style={[styles.statusLabel, { color: statusColor }]}>
+            {stateLabel(thread, now)}
+          </Text>
           <Text style={styles.age}>{age}</Text>
         </View>
         <Text style={styles.cardTitle} numberOfLines={2} ellipsizeMode="tail">
@@ -372,24 +473,79 @@ export function ThreadBoardView({
       </>
     );
 
-    return navigation ? (
-      <Pressable
-        key={thread.id}
-        accessibilityRole="button"
-        accessibilityLabel={accessibleDescription}
-        accessibilityHint="Opens this thread in Paseo"
-        onPress={() => navigation.openAgent({ agentId: thread.id })}
-        style={({ pressed }) => [
-          styles.card,
-          layout.compact && styles.cardCompact,
-          pressed && styles.cardPressed,
-        ]}
-      >
-        {content}
-      </Pressable>
-    ) : (
+    const confirmingArchive = confirmingArchiveId === thread.id;
+    const archiving = archivingId === thread.id;
+    const archiveBlocked = archivingId !== null;
+    return (
       <View key={thread.id} style={[styles.card, layout.compact && styles.cardCompact]}>
-        {content}
+        {navigation ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={accessibleDescription}
+            accessibilityHint="Opens this thread in Paseo"
+            onPress={() => navigation.openAgent({ agentId: thread.id })}
+            style={({ pressed }) => [styles.cardOpen, pressed && styles.cardPressed]}
+          >
+            {content}
+          </Pressable>
+        ) : (
+          <View style={styles.cardOpen}>{content}</View>
+        )}
+        {lane === "stale" ? (
+          <View style={styles.archiveRow} accessibilityLiveRegion="polite">
+            {confirmingArchive ? (
+              <>
+                <Text style={styles.archivePrompt}>Archive this thread?</Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Cancel archiving ${thread.title}`}
+                  disabled={archiving}
+                  onPress={() => setConfirmingArchiveId(null)}
+                  style={({ pressed }) => [styles.archiveButton, pressed && styles.pressed]}
+                >
+                  <Text style={styles.archiveButtonText}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Confirm archive ${thread.title}`}
+                  accessibilityState={{ busy: archiving, disabled: archiving }}
+                  disabled={archiving}
+                  onPress={() => void archiveThread(thread)}
+                  style={({ pressed }) => [
+                    styles.archiveButton,
+                    styles.archiveButtonDanger,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  {archiving ? (
+                    <ActivityIndicator size="small" color={theme.colors.statusDanger} />
+                  ) : (
+                    <Icon name="Archive" size={14} color={theme.colors.statusDanger} />
+                  )}
+                  <Text style={styles.archiveButtonTextDanger}>Archive</Text>
+                </Pressable>
+              </>
+            ) : (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Archive ${thread.title}`}
+                accessibilityHint="Asks for confirmation before archiving"
+                accessibilityState={{ disabled: archiveBlocked }}
+                disabled={archiveBlocked}
+                onPress={() => {
+                  if (archiveBlocked) return;
+                  setConfirmingArchiveId(thread.id);
+                  setArchiveError(null);
+                  setArchiveNotice(null);
+                }}
+                style={({ pressed }) => [styles.archiveButton, pressed && styles.pressed]}
+              >
+                <Icon name="Archive" size={14} color={theme.colors.foregroundMuted} />
+                <Text style={styles.archiveButtonText}>Archive</Text>
+              </Pressable>
+            )}
+          </View>
+        ) : null}
       </View>
     );
   };
@@ -473,11 +629,11 @@ export function ThreadBoardView({
             "Include subagent threads",
           )}
           {renderToggle(
-            closedTotal > 0 ? `Closed ${closedTotal}` : "Closed",
+            staleTotal > 0 ? `Stale ${staleTotal}` : "Stale",
             "Archive",
-            showClosed,
-            toggleClosed,
-            "Show closed threads",
+            showStale,
+            toggleStale,
+            "Show stale threads",
           )}
         </View>
       </View>
@@ -485,6 +641,18 @@ export function ThreadBoardView({
       {error ? (
         <Text accessibilityRole="alert" style={styles.error}>
           {error} Use Refresh to try again.
+        </Text>
+      ) : null}
+
+      {archiveError ? (
+        <Text accessibilityRole="alert" style={styles.error}>
+          {archiveError}
+        </Text>
+      ) : null}
+
+      {archiveNotice ? (
+        <Text accessibilityLiveRegion="polite" style={styles.notice}>
+          {archiveNotice}
         </Text>
       ) : null}
 

@@ -25,10 +25,11 @@ The plugin runs inside Paseo and reads the host's agent, workspace, and project 
 ## Capabilities and Constraints
 
 - One card represents one agent thread.
-- The lanes are Needs You, Running, Idle, and Closed.
-- Closed is hidden by default.
+- The lanes are Needs You, Running, Idle, and Stale.
+- A thread is stale when it has not been updated for seven days. Stale is hidden by default.
 - Top-level threads are shown by default. Users can include subagents; top-level cards show their subagent count.
-- The first release is read-only. Selecting a card opens the real Paseo thread.
+- Selecting any card opens the real Paseo thread. Stale cards can also be archived after confirmation.
+- Archived means closed for this board: archived threads leave the board and remain available through Paseo's archive/history surfaces.
 - Lane placement is derived from Paseo state. There is no drag-and-drop and no independent task database.
 - The client must update from Paseo's live subscriptions and work on compact and wide layouts.
 - The plugin targets the Paseo 0.8 plugin API.

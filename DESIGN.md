@@ -8,18 +8,23 @@ the ceremony of a second task tracker.
 - Inherit every color from Paseo's theme tokens. Never derive translucent colors from token strings.
 - Keep the page chrome light: one header, two visibility controls, then the live lanes.
 - Use the status dot as a quick scan aid, always paired with a written state label.
-- Give cards one obvious action: open the underlying Paseo thread.
+- Keep every card directly openable to the underlying Paseo thread. Stale cards add a secondary,
+  protected Archive action.
 
 ## Responsive behavior
 
 - Wide layouts show the visible lanes together, with independently virtualized vertical lists.
 - Compact layouts show horizontally scrollable status tabs and one virtualized lane at a time.
-- Closed and subagent threads remain opt-in so the first view emphasizes active top-level work.
+- The lanes are Needs You, Running, Idle, and Stale. A thread becomes stale at seven days or more
+  since its last update; stale and subagent threads remain opt-in so the first view emphasizes
+  recently active top-level work.
 
 ## States and accessibility
 
-- Loading, refresh, recoverable error, lane-empty, pressed, selected, and disabled-by-absence states
-  must remain understandable in every Paseo theme.
+- Loading, refresh, recoverable error, lane-empty, pressed, selected, archive-confirmation, and
+  archive-progress states must remain understandable in every Paseo theme.
+- Allow one archive transaction at a time. Disable competing Archive controls until it settles;
+  success removes the card immediately, while failure retains it and presents a recoverable error.
 - Controls meet Paseo's native touch-target floor. Switches and tabs expose their checked or selected
   state, and compact tabs identify their controlled panel on web.
 - A card's accessible name includes title, state, placement, provider/model, activity age, and child
@@ -29,5 +34,9 @@ the ceremony of a second task tracker.
 
 - Do sort within lanes by recent activity and put attention-demanding work first.
 - Do keep lane assignment derived from Paseo runtime state.
-- Don't add drag-and-drop, editable task state, analytics, or external persistence to this surface.
+- Do require confirmation before archiving an individual stale thread.
+- Don't add an Archived lane, bulk actions, drag-and-drop, editable task state, a configurable stale
+  threshold, analytics, or external persistence to this surface.
+- Don't introduce a new palette or raster assets; Thread Board remains entirely within Paseo's theme
+  tokens and native iconography.
 - Don't hide status behind color, motion, hover, or platform-specific gestures.
