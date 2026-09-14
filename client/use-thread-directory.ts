@@ -1,7 +1,9 @@
-import type { PaseoApi } from "@getpaseo/client";
+import type { usePaseo } from "@getpaseo/plugin/client";
 import { useCallback, useEffect, useState } from "react";
 import { type BoardThread, PARENT_AGENT_ID_LABEL } from "../shared/board";
 import { createSubscriptionKeeper } from "./directory-subscription";
+
+type PaseoApi = ReturnType<typeof usePaseo>;
 
 const PAGE_LIMIT = 200;
 const MAX_PAGES = 10;
