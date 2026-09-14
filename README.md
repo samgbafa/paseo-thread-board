@@ -8,8 +8,8 @@ each card's lane directly from Paseo, so there is no second task status to maint
 ## What it does
 
 - Places live agent threads into **Needs You**, **Running**, **Idle**, and **Stale**.
-- Groups multiple Paseo tabs for the same provider-native thread under one parent. The parent rolls
-  up to the most urgent tab, while each child remains visible in its own live-state lane.
+- Groups top-level agent tabs from the same Paseo workspace under their workspace parent. The parent
+  rolls up to the most urgent tab, while each child remains visible in its own live-state lane.
 - Treats threads with no user message in the last seven days as Stale and keeps them hidden by
   default. Merely opening a thread does not reset this clock.
 - Shows top-level threads by default, with a subagent count and an **Include subagents** toggle.
@@ -24,9 +24,9 @@ Lane placement reflects the thread's real runtime state and last sent message; c
 dragged into a state that Paseo does not have. Stale threads remain accessible until you explicitly
 archive them. Archived threads remain available through Paseo's archive/history surfaces.
 
-Thread grouping uses Paseo's persisted provider session identity (the native handle when available,
-otherwise the provider session ID). Tabs without a shared persistence handle remain ordinary
-standalone threads. Subagent parentage stays separate from tab grouping.
+Thread grouping uses Paseo's stable workspace identity. A workspace with one top-level tab remains
+an ordinary standalone thread. Subagents stay separate from the workspace's tab count, including
+when the **Include subagents** toggle is on.
 
 ## Lane rules
 

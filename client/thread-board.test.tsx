@@ -70,11 +70,11 @@ function thread(overrides: Partial<BoardThread> = {}): BoardThread {
     attentionReason: "finished",
     pendingPermissionCount: 0,
     parentAgentId: null,
+    workspaceId: null,
     projectName: "Paseo",
     workspaceName: "thread-board",
     provider: "openai",
     model: "gpt-5",
-    providerThreadKey: null,
     createdAt: freshTimestamp,
     updatedAt: freshTimestamp,
     lastMessageAt: freshTimestamp,
@@ -118,14 +118,14 @@ function findCard(renderer: ReactTestRenderer, title: string) {
 describe("Thread Board happy path", () => {
   it("rolls tabs up under one parent while each tab keeps its own lane and destination", () => {
     const openAgent = vi.fn();
-    const providerThreadKey = '["openai","release-thread"]';
     const staleTimestamp = new Date(Date.now() - 8 * 24 * 60 * 60 * 1_000).toISOString();
     const renderer = renderBoard(
       [
         thread({
           id: "idle-tab",
           title: "Release readiness",
-          providerThreadKey,
+          workspaceId: "release-workspace",
+          workspaceName: "Release 0.8",
           createdAt: "2026-09-10T08:00:00.000Z",
           requiresAttention: false,
           attentionReason: null,
@@ -133,14 +133,16 @@ describe("Thread Board happy path", () => {
         thread({
           id: "urgent-tab",
           title: "Approve the publish",
-          providerThreadKey,
+          workspaceId: "release-workspace",
+          workspaceName: "Release 0.8",
           createdAt: "2026-09-11T08:00:00.000Z",
           pendingPermissionCount: 1,
         }),
         thread({
           id: "stale-tab",
           title: "Old release view",
-          providerThreadKey,
+          workspaceId: "release-workspace",
+          workspaceName: "Release 0.8",
           createdAt: "2026-09-12T08:00:00.000Z",
           requiresAttention: false,
           attentionReason: null,
@@ -153,16 +155,16 @@ describe("Thread Board happy path", () => {
     const parent = renderer.root.find(
       (node) =>
         typeof node.props.accessibilityLabel === "string" &&
-        node.props.accessibilityLabel.startsWith("Release readiness, thread group with 3 tabs"),
+        node.props.accessibilityLabel.startsWith("Release 0.8, thread group with 3 tabs"),
     );
     expect(parent.props.accessibilityLabel).toContain("opens the Needs You tab");
     expect(findCard(renderer, "Approve the publish").props.accessibilityLabel).toContain(
-      "tab of Release readiness",
+      "tab of Release 0.8",
     );
     const idleTab = renderer.root.find(
       (node) =>
         typeof node.props.accessibilityLabel === "string" &&
-        node.props.accessibilityLabel.startsWith("Release readiness, tab of Release readiness"),
+        node.props.accessibilityLabel.startsWith("Release readiness, tab of Release 0.8"),
     );
     expect(() => findCard(renderer, "Old release view")).toThrow();
 
@@ -176,16 +178,101 @@ describe("Thread Board happy path", () => {
       renderer.root.findByProps({ accessibilityLabel: "Show stale threads" }).props.onPress();
     });
     expect(findCard(renderer, "Old release view").props.accessibilityLabel).toContain(
-      "tab of Release readiness",
+      "tab of Release 0.8",
     );
     expect(
       renderer.root.findAll(
         (node) =>
           String(node.type) === "Text" &&
           Array.isArray(node.props.children) &&
-          node.props.children.join("") === "Tab of Release readiness",
+          node.props.children.join("") === "Tab of Release 0.8",
       ),
     ).toHaveLength(3);
+
+    act(() => renderer.unmount());
+  });
+
+  it("shows one Idle parent for one idle and two stale tabs without counting subagents", () => {
+    const staleTimestamp = new Date(Date.now() - 8 * 24 * 60 * 60 * 1_000).toISOString();
+    const renderer = renderBoard([
+      thread({
+        id: "celld-idle",
+        title: "Tell me about the TinyCloud update",
+        workspaceId: "celld-workspace",
+        workspaceName: "Design TinyCloud 2.0 with celld",
+        requiresAttention: false,
+        attentionReason: null,
+      }),
+      thread({
+        id: "celld-stale-one",
+        title: "TinyCloud document sync",
+        workspaceId: "celld-workspace",
+        workspaceName: "Design TinyCloud 2.0 with celld",
+        requiresAttention: false,
+        attentionReason: null,
+        lastMessageAt: staleTimestamp,
+      }),
+      thread({
+        id: "celld-stale-two",
+        title: "https://celld.dev/",
+        workspaceId: "celld-workspace",
+        workspaceName: "Design TinyCloud 2.0 with celld",
+        requiresAttention: false,
+        attentionReason: null,
+        lastMessageAt: staleTimestamp,
+      }),
+      thread({
+        id: "celld-subagent",
+        title: "Run celld verification",
+        workspaceId: "celld-workspace",
+        workspaceName: "Design TinyCloud 2.0 with celld",
+        parentAgentId: "celld-idle",
+        status: "running",
+        requiresAttention: false,
+        attentionReason: null,
+      }),
+    ]);
+
+    const parent = renderer.root.find(
+      (node) =>
+        typeof node.props.accessibilityLabel === "string" &&
+        node.props.accessibilityLabel.startsWith(
+          "Design TinyCloud 2.0 with celld, thread group with 3 tabs",
+        ),
+    );
+    expect(parent.props.accessibilityLabel).toContain("opens the Idle tab, Idle");
+    expect(
+      findCard(renderer, "Tell me about the TinyCloud update").props.accessibilityLabel,
+    ).toContain("tab of Design TinyCloud 2.0 with celld");
+    expect(() => findCard(renderer, "TinyCloud document sync")).toThrow();
+    expect(() => findCard(renderer, "https://celld.dev/")).toThrow();
+    expect(() => findCard(renderer, "Run celld verification")).toThrow();
+
+    act(() => {
+      renderer.root.findByProps({ accessibilityLabel: "Show stale threads" }).props.onPress();
+    });
+    expect(findCard(renderer, "TinyCloud document sync").props.accessibilityLabel).toContain(
+      "tab of Design TinyCloud 2.0 with celld",
+    );
+    expect(findCard(renderer, "https://celld.dev/").props.accessibilityLabel).toContain(
+      "tab of Design TinyCloud 2.0 with celld",
+    );
+
+    act(() => {
+      renderer.root.findByProps({ accessibilityLabel: "Include subagent threads" }).props.onPress();
+    });
+    expect(
+      renderer.root.findAll(
+        (node) =>
+          typeof node.props.accessibilityLabel === "string" &&
+          node.props.accessibilityLabel.startsWith(
+            "Design TinyCloud 2.0 with celld, thread group with 3 tabs",
+          ),
+      ),
+    ).toHaveLength(1);
+    expect(findCard(renderer, "Run celld verification").props.accessibilityLabel).not.toContain(
+      "tab of Design TinyCloud 2.0 with celld",
+    );
 
     act(() => renderer.unmount());
   });

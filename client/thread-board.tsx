@@ -475,13 +475,14 @@ export function ThreadBoardView({
     const childLabel =
       children > 0 ? `, ${children} ${children === 1 ? "subagent" : "subagents"}` : "";
     const title = kind === "group" && group ? group.title : thread.title;
+    const placementLabel = kind === "group" ? thread.projectName : placement(thread);
     const relationshipLabel =
       kind === "group" && group
         ? `thread group with ${group.tabs.length} tabs, opens the ${LANE_TITLES[group.lane]} tab`
         : kind === "tab" && group
           ? `tab of ${group.title}`
           : null;
-    const accessibleDescription = `${title}, ${relationshipLabel ? `${relationshipLabel}, ` : ""}${stateLabel(thread, now)}, ${placement(thread)}, ${modelLabel(thread)}, ${activityLabel}${childLabel}`;
+    const accessibleDescription = `${title}, ${relationshipLabel ? `${relationshipLabel}, ` : ""}${stateLabel(thread, now)}, ${placementLabel}, ${modelLabel(thread)}, ${activityLabel}${childLabel}`;
     const content = (
       <>
         <View style={styles.cardTop}>
@@ -510,7 +511,7 @@ export function ThreadBoardView({
           </View>
         ) : null}
         <Text style={styles.placement} numberOfLines={1} ellipsizeMode="tail">
-          {placement(thread)}
+          {placementLabel}
         </Text>
         <View style={styles.cardBottom}>
           <Text style={styles.model} numberOfLines={1} ellipsizeMode="tail">

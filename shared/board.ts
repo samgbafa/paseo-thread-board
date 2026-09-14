@@ -21,11 +21,11 @@ export interface BoardThread {
   attentionReason: "finished" | "error" | "permission" | null;
   pendingPermissionCount: number;
   parentAgentId: string | null;
+  workspaceId: string | null;
   projectName: string;
   workspaceName: string | null;
   provider: string;
   model: string | null;
-  providerThreadKey: string | null;
   createdAt: string;
   updatedAt: string;
   lastMessageAt: string;
@@ -105,16 +105,17 @@ function compareActivity(left: BoardThread, right: BoardThread): number {
   );
 }
 
-/** Groups separate Paseo agent tabs that resume the same provider-native thread. */
+/** Groups top-level agent tabs under their shared Paseo workspace parent. */
 export function groupThreads(
   threads: readonly BoardThread[],
   now = Date.now(),
 ): BoardThreadGroup[] {
   const groups = new Map<string, BoardThread[]>();
   for (const thread of threads) {
-    const id = thread.providerThreadKey
-      ? `provider-thread:${thread.providerThreadKey}`
-      : `agent:${thread.id}`;
+    const id =
+      thread.workspaceId && thread.parentAgentId === null
+        ? `workspace:${thread.workspaceId}`
+        : `agent:${thread.id}`;
     const tabs = groups.get(id);
     if (tabs) tabs.push(thread);
     else groups.set(id, [thread]);
@@ -133,7 +134,7 @@ export function groupThreads(
       )[0];
       return {
         id,
-        title: canonicalTab.title,
+        title: canonicalTab.workspaceName?.trim() || canonicalTab.projectName,
         tabs,
         primaryTab,
         lane: laneOf(primaryTab, now),

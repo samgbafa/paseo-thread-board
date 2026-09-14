@@ -22,11 +22,11 @@ function thread(overrides: Partial<BoardThread> = {}): BoardThread {
     attentionReason: null,
     pendingPermissionCount: 0,
     parentAgentId: null,
+    workspaceId: null,
     projectName: "Paseo",
     workspaceName: "thread-board",
     provider: "openai",
     model: "gpt-5",
-    providerThreadKey: null,
     createdAt: "2026-09-14T10:00:00.000Z",
     updatedAt: "2026-09-14T11:00:00.000Z",
     lastMessageAt: "2026-09-14T11:00:00.000Z",
@@ -68,12 +68,12 @@ describe("laneOf", () => {
 });
 
 describe("thread grouping", () => {
-  const providerThreadKey = '["openai","native-thread-1"]';
   const tabs = [
     thread({
       id: "original-tab",
       title: "Review the release",
-      providerThreadKey,
+      workspaceId: "release-workspace",
+      workspaceName: "Release 0.8",
       createdAt: "2026-09-10T08:00:00.000Z",
       status: "idle",
       requiresAttention: false,
@@ -83,7 +83,8 @@ describe("thread grouping", () => {
     thread({
       id: "urgent-tab",
       title: "Approve the release",
-      providerThreadKey,
+      workspaceId: "release-workspace",
+      workspaceName: "Release 0.8",
       createdAt: "2026-09-12T08:00:00.000Z",
       pendingPermissionCount: 1,
       lastMessageAt: "2026-09-14T10:00:00.000Z",
@@ -91,7 +92,8 @@ describe("thread grouping", () => {
     thread({
       id: "stale-tab",
       title: "Old release view",
-      providerThreadKey,
+      workspaceId: "release-workspace",
+      workspaceName: "Release 0.8",
       createdAt: "2026-09-13T08:00:00.000Z",
       requiresAttention: false,
       attentionReason: null,
@@ -99,13 +101,26 @@ describe("thread grouping", () => {
     }),
   ];
 
-  it("rolls a provider thread up to its most urgent tab while retaining a stable parent title", () => {
+  it("rolls a parent thread up to its most urgent tab while retaining the workspace title", () => {
     const [group] = groupThreads(tabs, NOW);
 
-    expect(group.title).toBe("Review the release");
+    expect(group.title).toBe("Release 0.8");
     expect(group.lane).toBe("attention");
     expect(group.primaryTab.id).toBe("urgent-tab");
     expect(group.tabs.map(({ id }) => id)).toEqual(["urgent-tab", "original-tab", "stale-tab"]);
+  });
+
+  it("groups different provider sessions that are tabs of the same Paseo parent thread", () => {
+    const groups = groupThreads(
+      [
+        thread({ id: "first-tab", workspaceId: "shared-workspace", provider: "claude" }),
+        thread({ id: "second-tab", workspaceId: "shared-workspace", provider: "codex" }),
+      ],
+      NOW,
+    );
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0].tabs).toHaveLength(2);
   });
 
   it("keeps each tab in its own lane and hides only stale items by default", () => {
@@ -124,10 +139,10 @@ describe("thread grouping", () => {
     });
   });
 
-  it("does not manufacture a parent for a thread with one tab or no persistence handle", () => {
+  it("does not manufacture a parent for tabs without a shared workspace identity", () => {
     const groups = groupThreads([
-      thread({ id: "first", providerThreadKey: null }),
-      thread({ id: "second", providerThreadKey: null }),
+      thread({ id: "first", workspaceId: null }),
+      thread({ id: "second", workspaceId: null }),
     ]);
 
     expect(groups).toHaveLength(2);
@@ -135,6 +150,18 @@ describe("thread grouping", () => {
       "thread",
       "thread",
     ]);
+  });
+
+  it("keeps subagents separate from their workspace's tab group", () => {
+    const groups = groupThreads([
+      thread({ id: "first-tab", workspaceId: "shared-workspace" }),
+      thread({ id: "second-tab", workspaceId: "shared-workspace" }),
+      thread({ id: "subagent", workspaceId: "shared-workspace", parentAgentId: "first-tab" }),
+    ]);
+
+    expect(groups).toHaveLength(2);
+    expect(groups.find(({ id }) => id === "workspace:shared-workspace")?.tabs).toHaveLength(2);
+    expect(groups.find(({ id }) => id === "agent:subagent")?.tabs).toHaveLength(1);
   });
 });
 

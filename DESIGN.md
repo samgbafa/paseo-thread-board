@@ -8,10 +8,11 @@ the ceremony of a second task tracker.
 - Inherit every color from Paseo's theme tokens. Never derive translucent colors from token strings.
 - Keep the page chrome light: one header, two visibility controls, then the live lanes.
 - Use the status dot as a quick scan aid, always paired with a written state label.
-- Give a multi-tab provider thread one visually emphasized roll-up parent, with its tab cards
-  indented beneath the relationship. The parent shows the tab count and the lane its action opens;
-  each child says `Tab of …` so the hierarchy remains explicit without relying on indentation alone.
-- Keep tab grouping and subagent counts as distinct concepts and use distinct language for each.
+- Give a Paseo workspace with multiple top-level agent tabs one visually emphasized roll-up parent,
+  regardless of differing provider persistence or session handles. Name it from `workspaceName`,
+  with `projectName` as its fallback. The parent counts only those top-level tabs; subagents sharing
+  its `workspaceId` remain standalone items and never increment that count. Each child says
+  `Tab of <workspace parent>` so the hierarchy remains explicit without relying on indentation alone.
 - Keep every card directly openable to the underlying Paseo thread. Stale cards add a secondary,
   protected Archive action.
 
@@ -21,7 +22,8 @@ the ceremony of a second task tracker.
 - Compact layouts show horizontally scrollable status tabs and one virtualized lane at a time.
 - Place a multi-tab parent in the lane of its most urgent child while keeping each child tab in its
   own live-state lane. Activating the parent opens that urgent child; activating a child opens that
-  exact Paseo tab.
+  exact Paseo tab. One Idle and two Stale top-level tabs therefore produce one three-tab Idle parent;
+  the two stale children appear when Stale is enabled.
 - The lanes are Needs You, Running, Idle, and Stale. A thread becomes stale at seven days or more
   since its last user message; metadata updates such as viewing a thread do not affect the clock.
   Stale and subagent threads remain opt-in so the first view emphasizes recently active top-level

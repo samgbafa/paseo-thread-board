@@ -24,8 +24,8 @@ The plugin runs inside Paseo and reads the host's agent, workspace, and project 
 
 ## Capabilities and Constraints
 
-- A provider-native thread appears once as a parent when Paseo has multiple agent tabs for it.
-  Each tab remains visible as a child item in its own live-state lane.
+- A Paseo workspace appears as a parent when it has multiple top-level agent tabs. Each tab remains
+  visible as a child item in its own live-state lane; subagents stay separate from the tab count.
 - The lanes are Needs You, Running, Idle, and Stale.
 - A thread is stale when no user message has been sent for seven days. Viewing a thread does not
   affect this clock. Stale is hidden by default.

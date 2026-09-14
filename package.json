@@ -1,7 +1,7 @@
 {
   "name": "paseo-thread-board",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.3.1",
   "type": "module",
   "description": "A live Kanban view of Paseo agent threads.",
   "license": "MIT",

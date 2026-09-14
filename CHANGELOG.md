@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1 — 2026-09-14
+
+- Group top-level tabs by their shared Paseo workspace parent instead of their provider session,
+  while keeping subagents separate from the tab count.
+
 ## 0.3.0 — 2026-09-14
 
 - Group Paseo agent tabs that share one provider-native thread under a canonical parent.

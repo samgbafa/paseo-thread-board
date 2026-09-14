@@ -8,6 +8,7 @@ function agent(overrides: Record<string, unknown> = {}) {
     status: "idle",
     provider: "openai",
     model: "gpt-5",
+    workspaceId: "workspace-1",
     labels: {},
     pendingPermissions: [],
     requiresAttention: false,
@@ -26,6 +27,7 @@ describe("thread directory projection", () => {
 
     expect(thread.updatedAt).toBe("2026-09-14T12:00:00.000Z");
     expect(thread.lastMessageAt).toBe("2026-09-05T12:00:00.000Z");
+    expect(thread.workspaceId).toBe("workspace-1");
   });
 
   it("uses creation time when a thread has no sent messages", () => {
@@ -34,27 +36,10 @@ describe("thread directory projection", () => {
     expect(thread.lastMessageAt).toBe("2026-09-01T12:00:00.000Z");
   });
 
-  it("uses the provider-native handle to identify tabs of the same underlying thread", () => {
-    const thread = toBoardThread(
-      agent({
-        persistence: {
-          provider: "codex",
-          sessionId: "paseo-session-1",
-          nativeHandle: "codex-thread-1",
-        },
-      }) as never,
-      null,
-    );
+  it("retains a known workspace identity when a partial live snapshot omits it", () => {
+    const existing = toBoardThread(agent() as never, null);
+    const thread = toBoardThread(agent({ workspaceId: undefined }) as never, null, existing);
 
-    expect(thread.providerThreadKey).toBe('["codex","codex-thread-1"]');
-  });
-
-  it("falls back to the persistence session id when no native handle is available", () => {
-    const thread = toBoardThread(
-      agent({ persistence: { provider: "claude", sessionId: "claude-session-1" } }) as never,
-      null,
-    );
-
-    expect(thread.providerThreadKey).toBe('["claude","claude-session-1"]');
+    expect(thread.workspaceId).toBe("workspace-1");
   });
 });
