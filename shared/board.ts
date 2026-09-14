@@ -25,8 +25,26 @@ export interface BoardThread {
   workspaceName: string | null;
   provider: string;
   model: string | null;
+  providerThreadKey: string | null;
+  createdAt: string;
   updatedAt: string;
   lastMessageAt: string;
+}
+
+export interface BoardThreadGroup {
+  id: string;
+  title: string;
+  tabs: readonly BoardThread[];
+  primaryTab: BoardThread;
+  lane: LaneId;
+}
+
+export interface BoardItem {
+  id: string;
+  kind: "thread" | "group" | "tab";
+  lane: LaneId;
+  thread: BoardThread;
+  group: BoardThreadGroup | null;
 }
 
 export function isStale(thread: BoardThread, now = Date.now()): boolean {
@@ -68,6 +86,97 @@ export function countChildren(threads: readonly BoardThread[]): ReadonlyMap<stri
   return counts;
 }
 
+const LANE_PRIORITY: Record<LaneId, number> = {
+  attention: 0,
+  running: 1,
+  idle: 2,
+  stale: 3,
+};
+
+function timeValue(iso: string): number {
+  const value = Date.parse(iso);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function compareActivity(left: BoardThread, right: BoardThread): number {
+  return (
+    timeValue(right.lastMessageAt) - timeValue(left.lastMessageAt) ||
+    left.id.localeCompare(right.id)
+  );
+}
+
+/** Groups separate Paseo agent tabs that resume the same provider-native thread. */
+export function groupThreads(
+  threads: readonly BoardThread[],
+  now = Date.now(),
+): BoardThreadGroup[] {
+  const groups = new Map<string, BoardThread[]>();
+  for (const thread of threads) {
+    const id = thread.providerThreadKey
+      ? `provider-thread:${thread.providerThreadKey}`
+      : `agent:${thread.id}`;
+    const tabs = groups.get(id);
+    if (tabs) tabs.push(thread);
+    else groups.set(id, [thread]);
+  }
+
+  return [...groups.entries()]
+    .map(([id, unsortedTabs]) => {
+      const tabs = [...unsortedTabs].sort(compareActivity);
+      const primaryTab = [...tabs].sort((left, right) => {
+        const urgency = LANE_PRIORITY[laneOf(left, now)] - LANE_PRIORITY[laneOf(right, now)];
+        return urgency || compareActivity(left, right);
+      })[0];
+      const canonicalTab = [...tabs].sort(
+        (left, right) =>
+          timeValue(left.createdAt) - timeValue(right.createdAt) || left.id.localeCompare(right.id),
+      )[0];
+      return {
+        id,
+        title: canonicalTab.title,
+        tabs,
+        primaryTab,
+        lane: laneOf(primaryTab, now),
+      } satisfies BoardThreadGroup;
+    })
+    .sort((left, right) => compareActivity(left.primaryTab, right.primaryTab));
+}
+
+/** Expands multi-tab threads into one roll-up parent plus independently placed tab items. */
+export function boardItems(
+  groups: readonly BoardThreadGroup[],
+  options: { showStale: boolean; now?: number },
+): BoardItem[] {
+  const items: BoardItem[] = [];
+  for (const group of groups) {
+    if (group.tabs.length === 1) {
+      const thread = group.tabs[0];
+      const lane = laneOf(thread, options.now);
+      if (options.showStale || lane !== "stale") {
+        items.push({ id: `thread:${thread.id}`, kind: "thread", lane, thread, group: null });
+      }
+      continue;
+    }
+
+    if (options.showStale || group.lane !== "stale") {
+      items.push({
+        id: `group:${group.id}`,
+        kind: "group",
+        lane: group.lane,
+        thread: group.primaryTab,
+        group,
+      });
+    }
+    for (const tab of group.tabs) {
+      const lane = laneOf(tab, options.now);
+      if (options.showStale || lane !== "stale") {
+        items.push({ id: `tab:${tab.id}`, kind: "tab", lane, thread: tab, group });
+      }
+    }
+  }
+  return items;
+}
+
 export function visibleThreads(
   threads: readonly BoardThread[],
   options: { includeSubagents: boolean; showStale: boolean; now?: number },
@@ -76,11 +185,7 @@ export function visibleThreads(
     .filter((thread) => options.includeSubagents || thread.parentAgentId === null)
     .filter((thread) => options.showStale || laneOf(thread, options.now) !== "stale")
     .sort((left, right) => {
-      const leftTime = Date.parse(left.lastMessageAt);
-      const rightTime = Date.parse(right.lastMessageAt);
-      return (
-        (Number.isFinite(rightTime) ? rightTime : 0) - (Number.isFinite(leftTime) ? leftTime : 0)
-      );
+      return compareActivity(left, right);
     });
 }
 

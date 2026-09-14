@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0 — 2026-09-14
+
+- Group Paseo agent tabs that share one provider-native thread under a canonical parent.
+- Roll the parent into the most urgent child state while keeping every child tab in its own lane.
+- Make parent and child destinations explicit: parents open the urgent tab and children open their
+  exact Paseo tab.
+
 ## 0.2.1 — 2026-09-14
 
 - Base activity age, Stale classification, and lane sorting on Paseo's last user-message time so

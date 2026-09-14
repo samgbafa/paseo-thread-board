@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   type BoardThread,
+  boardItems,
   countChildren,
+  groupThreads,
   isStale,
   laneOf,
   relativeAge,
@@ -24,6 +26,8 @@ function thread(overrides: Partial<BoardThread> = {}): BoardThread {
     workspaceName: "thread-board",
     provider: "openai",
     model: "gpt-5",
+    providerThreadKey: null,
+    createdAt: "2026-09-14T10:00:00.000Z",
     updatedAt: "2026-09-14T11:00:00.000Z",
     lastMessageAt: "2026-09-14T11:00:00.000Z",
     ...overrides,
@@ -60,6 +64,77 @@ describe("laneOf", () => {
         NOW,
       ),
     ).toBe(false);
+  });
+});
+
+describe("thread grouping", () => {
+  const providerThreadKey = '["openai","native-thread-1"]';
+  const tabs = [
+    thread({
+      id: "original-tab",
+      title: "Review the release",
+      providerThreadKey,
+      createdAt: "2026-09-10T08:00:00.000Z",
+      status: "idle",
+      requiresAttention: false,
+      attentionReason: null,
+      lastMessageAt: "2026-09-14T09:00:00.000Z",
+    }),
+    thread({
+      id: "urgent-tab",
+      title: "Approve the release",
+      providerThreadKey,
+      createdAt: "2026-09-12T08:00:00.000Z",
+      pendingPermissionCount: 1,
+      lastMessageAt: "2026-09-14T10:00:00.000Z",
+    }),
+    thread({
+      id: "stale-tab",
+      title: "Old release view",
+      providerThreadKey,
+      createdAt: "2026-09-13T08:00:00.000Z",
+      requiresAttention: false,
+      attentionReason: null,
+      lastMessageAt: "2026-09-01T10:00:00.000Z",
+    }),
+  ];
+
+  it("rolls a provider thread up to its most urgent tab while retaining a stable parent title", () => {
+    const [group] = groupThreads(tabs, NOW);
+
+    expect(group.title).toBe("Review the release");
+    expect(group.lane).toBe("attention");
+    expect(group.primaryTab.id).toBe("urgent-tab");
+    expect(group.tabs.map(({ id }) => id)).toEqual(["urgent-tab", "original-tab", "stale-tab"]);
+  });
+
+  it("keeps each tab in its own lane and hides only stale items by default", () => {
+    const groups = groupThreads(tabs, NOW);
+    const visible = boardItems(groups, { showStale: false, now: NOW });
+
+    expect(visible.map(({ kind, lane, thread }) => [kind, lane, thread.id])).toEqual([
+      ["group", "attention", "urgent-tab"],
+      ["tab", "attention", "urgent-tab"],
+      ["tab", "idle", "original-tab"],
+    ]);
+    expect(boardItems(groups, { showStale: true, now: NOW }).at(-1)).toMatchObject({
+      kind: "tab",
+      lane: "stale",
+      thread: { id: "stale-tab" },
+    });
+  });
+
+  it("does not manufacture a parent for a thread with one tab or no persistence handle", () => {
+    const groups = groupThreads([
+      thread({ id: "first", providerThreadKey: null }),
+      thread({ id: "second", providerThreadKey: null }),
+    ]);
+
+    expect(groups).toHaveLength(2);
+    expect(boardItems(groups, { showStale: true }).map(({ kind }) => kind)).toEqual([
+      "thread",
+      "thread",
+    ]);
   });
 });
 

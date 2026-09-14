@@ -32,6 +32,13 @@ function parentAgentId(agent: Agent): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
+function providerThreadKey(agent: Agent): string | null {
+  const persistence = agent.persistence;
+  if (!persistence) return null;
+  const handle = persistence.nativeHandle?.trim() || persistence.sessionId.trim();
+  return handle ? JSON.stringify([persistence.provider, handle]) : null;
+}
+
 export function toBoardThread(
   agent: Agent,
   project: Project | null | undefined,
@@ -51,6 +58,8 @@ export function toBoardThread(
     workspaceName,
     provider: agent.provider,
     model: agent.model,
+    providerThreadKey: providerThreadKey(agent) ?? existing?.providerThreadKey ?? null,
+    createdAt: agent.createdAt,
     updatedAt: agent.updatedAt,
     lastMessageAt: agent.lastUserMessageAt ?? agent.createdAt,
   };

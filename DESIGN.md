@@ -8,6 +8,10 @@ the ceremony of a second task tracker.
 - Inherit every color from Paseo's theme tokens. Never derive translucent colors from token strings.
 - Keep the page chrome light: one header, two visibility controls, then the live lanes.
 - Use the status dot as a quick scan aid, always paired with a written state label.
+- Give a multi-tab provider thread one visually emphasized roll-up parent, with its tab cards
+  indented beneath the relationship. The parent shows the tab count and the lane its action opens;
+  each child says `Tab of …` so the hierarchy remains explicit without relying on indentation alone.
+- Keep tab grouping and subagent counts as distinct concepts and use distinct language for each.
 - Keep every card directly openable to the underlying Paseo thread. Stale cards add a secondary,
   protected Archive action.
 
@@ -15,6 +19,9 @@ the ceremony of a second task tracker.
 
 - Wide layouts show the visible lanes together, with independently virtualized vertical lists.
 - Compact layouts show horizontally scrollable status tabs and one virtualized lane at a time.
+- Place a multi-tab parent in the lane of its most urgent child while keeping each child tab in its
+  own live-state lane. Activating the parent opens that urgent child; activating a child opens that
+  exact Paseo tab.
 - The lanes are Needs You, Running, Idle, and Stale. A thread becomes stale at seven days or more
   since its last user message; metadata updates such as viewing a thread do not affect the clock.
   Stale and subagent threads remain opt-in so the first view emphasizes recently active top-level
@@ -25,7 +32,10 @@ the ceremony of a second task tracker.
 - Loading, refresh, recoverable error, lane-empty, pressed, selected, archive-confirmation, and
   archive-progress states must remain understandable in every Paseo theme.
 - Allow one archive transaction at a time. Disable competing Archive controls until it settles;
-  success removes the card immediately, while failure retains it and presents a recoverable error.
+  semantically disabled archive controls also use unmistakably reduced opacity. Success removes the
+  card immediately, while failure retains it and presents a recoverable error.
+- Never show Archive on a virtual roll-up parent. A stale concrete thread or tab retains the
+  confirmed Archive action.
 - Controls meet Paseo's native touch-target floor. Switches and tabs expose their checked or selected
   state, and compact tabs identify their controlled panel on web.
 - A card's accessible name includes title, state, placement, provider/model, activity age, and child
@@ -35,7 +45,10 @@ the ceremony of a second task tracker.
 
 - Do sort within lanes by recent activity and put attention-demanding work first.
 - Do keep lane assignment derived from Paseo runtime state.
+- Do keep the urgency-first parent, indented `Tab of …` children in their own lanes, and distinct
+  subagent language.
 - Do require confirmation before archiving an individual stale thread.
+- Don't offer Archive on a virtual roll-up parent.
 - Don't add an Archived lane, bulk actions, drag-and-drop, editable task state, a configurable stale
   threshold, analytics, or external persistence to this surface.
 - Don't introduce a new palette or raster assets; Thread Board remains entirely within Paseo's theme

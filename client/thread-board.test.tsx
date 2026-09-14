@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
 import contribute from "../index.client";
-import type { BoardThread } from "../shared/board";
+import type { BoardItem, BoardThread } from "../shared/board";
 import { ThreadBoardView } from "./thread-board";
 
 vi.mock("react-native", async () => {
@@ -15,8 +15,8 @@ vi.mock("react-native", async () => {
       ListEmptyComponent,
       ...props
     }: {
-      data: BoardThread[];
-      renderItem(input: { item: BoardThread; index: number }): ReactNode;
+      data: BoardItem[];
+      renderItem(input: { item: BoardItem; index: number }): ReactNode;
       ListEmptyComponent?: ReactNode;
     }) =>
       createElement(
@@ -74,6 +74,8 @@ function thread(overrides: Partial<BoardThread> = {}): BoardThread {
     workspaceName: "thread-board",
     provider: "openai",
     model: "gpt-5",
+    providerThreadKey: null,
+    createdAt: freshTimestamp,
     updatedAt: freshTimestamp,
     lastMessageAt: freshTimestamp,
     ...overrides,
@@ -114,6 +116,80 @@ function findCard(renderer: ReactTestRenderer, title: string) {
 }
 
 describe("Thread Board happy path", () => {
+  it("rolls tabs up under one parent while each tab keeps its own lane and destination", () => {
+    const openAgent = vi.fn();
+    const providerThreadKey = '["openai","release-thread"]';
+    const staleTimestamp = new Date(Date.now() - 8 * 24 * 60 * 60 * 1_000).toISOString();
+    const renderer = renderBoard(
+      [
+        thread({
+          id: "idle-tab",
+          title: "Release readiness",
+          providerThreadKey,
+          createdAt: "2026-09-10T08:00:00.000Z",
+          requiresAttention: false,
+          attentionReason: null,
+        }),
+        thread({
+          id: "urgent-tab",
+          title: "Approve the publish",
+          providerThreadKey,
+          createdAt: "2026-09-11T08:00:00.000Z",
+          pendingPermissionCount: 1,
+        }),
+        thread({
+          id: "stale-tab",
+          title: "Old release view",
+          providerThreadKey,
+          createdAt: "2026-09-12T08:00:00.000Z",
+          requiresAttention: false,
+          attentionReason: null,
+          lastMessageAt: staleTimestamp,
+        }),
+      ],
+      openAgent,
+    );
+
+    const parent = renderer.root.find(
+      (node) =>
+        typeof node.props.accessibilityLabel === "string" &&
+        node.props.accessibilityLabel.startsWith("Release readiness, thread group with 3 tabs"),
+    );
+    expect(parent.props.accessibilityLabel).toContain("opens the Needs You tab");
+    expect(findCard(renderer, "Approve the publish").props.accessibilityLabel).toContain(
+      "tab of Release readiness",
+    );
+    const idleTab = renderer.root.find(
+      (node) =>
+        typeof node.props.accessibilityLabel === "string" &&
+        node.props.accessibilityLabel.startsWith("Release readiness, tab of Release readiness"),
+    );
+    expect(() => findCard(renderer, "Old release view")).toThrow();
+
+    act(() => parent.props.onPress());
+    expect(openAgent).toHaveBeenLastCalledWith({ agentId: "urgent-tab" });
+
+    act(() => idleTab.props.onPress());
+    expect(openAgent).toHaveBeenLastCalledWith({ agentId: "idle-tab" });
+
+    act(() => {
+      renderer.root.findByProps({ accessibilityLabel: "Show stale threads" }).props.onPress();
+    });
+    expect(findCard(renderer, "Old release view").props.accessibilityLabel).toContain(
+      "tab of Release readiness",
+    );
+    expect(
+      renderer.root.findAll(
+        (node) =>
+          String(node.type) === "Text" &&
+          Array.isArray(node.props.children) &&
+          node.props.children.join("") === "Tab of Release readiness",
+      ),
+    ).toHaveLength(3);
+
+    act(() => renderer.unmount());
+  });
+
   it("shows top-level active work and opens the selected Paseo thread", () => {
     const openAgent = vi.fn();
     const renderer = renderBoard(
@@ -305,6 +381,12 @@ describe("Thread Board happy path", () => {
       accessibilityLabel: "Archive Second stale thread",
     });
     expect(competingArchive.props.disabled).toBe(true);
+    expect(competingArchive.props.style({ pressed: false })).toContainEqual({ opacity: 0.45 });
+    const cancelCurrentArchive = renderer.root.findByProps({
+      accessibilityLabel: "Cancel archiving First stale thread",
+    });
+    expect(cancelCurrentArchive.props.disabled).toBe(true);
+    expect(cancelCurrentArchive.props.style({ pressed: false })).toContainEqual({ opacity: 0.45 });
     act(() => competingArchive.props.onPress());
     expect(onArchive).toHaveBeenCalledTimes(1);
 
@@ -348,7 +430,7 @@ describe("Thread Board happy path", () => {
     expect(subagents?.props.accessibilityState).toEqual({ checked: false });
     expect(subagents?.props["aria-checked"]).toBe(false);
 
-    const selectedTab = renderer?.root.findByProps({ accessibilityLabel: "Needs You, 1 thread" });
+    const selectedTab = renderer?.root.findByProps({ accessibilityLabel: "Needs You, 1 item" });
     expect(selectedTab?.props.accessibilityState).toEqual({ selected: true });
     expect(selectedTab?.props["aria-selected"]).toBe(true);
     expect(selectedTab?.props["aria-controls"]).toBe("thread-board-panel-attention");
@@ -394,7 +476,7 @@ describe("Thread Board happy path", () => {
       );
     });
     expect(renderer?.root.findByProps({ accessibilityRole: "alert" })).toBeTruthy();
-    expect(renderer?.root.findAllByProps({ children: "No threads here" })).toHaveLength(3);
+    expect(renderer?.root.findAllByProps({ children: "No items here" })).toHaveLength(3);
 
     act(() => renderer?.unmount());
   });

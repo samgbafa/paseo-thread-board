@@ -1,9 +1,9 @@
 /*
-THESIS: Live agent state becomes a calm dispatch board, never a second task tracker.
+THESIS: Live agent state becomes a calm thread-first dispatch board, never a second task tracker.
 OWN-WORLD: Paseo theme tokens, low-chrome lanes, compact status marks, and native controls.
-STORY: See what needs attention, scan active work, then open the real thread in one action.
-FIRST VIEWPORT: Identity and visibility controls lead directly into four status lanes; compact clients show one lane at a time.
-FORM: An operational board extending Paseo's established interface and the user's approved lane model.
+STORY: See urgent threads, understand each tab's state, then open the right tab in one action.
+FIRST VIEWPORT: Four lanes hold urgent roll-up parents and clearly referenced child tabs; compact clients show one lane at a time.
+FORM: Local extension of the established Thread Board form; no concept roll by local-extension contract.
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
 */
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
@@ -20,8 +20,11 @@ import {
   type ViewStyle,
 } from "react-native";
 import {
+  type BoardItem,
   type BoardThread,
+  boardItems,
   countChildren,
+  groupThreads,
   LANE_TITLES,
   LANES,
   type LaneId,
@@ -284,6 +287,12 @@ export function ThreadBoardView({
         borderWidth: 1,
         borderColor: colors.border,
       },
+      groupCard: {
+        backgroundColor: colors.surface2,
+        borderWidth: 1,
+        borderColor: colors.border,
+      },
+      tabCard: { marginLeft: 10 },
       cardTop: { flexDirection: "row" as const, alignItems: "center" as const, gap: 7 },
       statusDot: { width: 7, height: 7, borderRadius: 4 },
       statusLabel: { flex: 1, fontSize: 11, fontWeight: "600" as const },
@@ -297,6 +306,24 @@ export function ThreadBoardView({
         fontSize: 15,
         lineHeight: 20,
         fontWeight: "600" as const,
+      },
+      relationship: {
+        flexDirection: "row" as const,
+        alignItems: "center" as const,
+        gap: 6,
+      },
+      relationshipText: {
+        flex: 1,
+        color: colors.foregroundMuted,
+        fontSize: 11,
+        lineHeight: 15,
+      },
+      groupRelationshipText: {
+        flex: 1,
+        color: colors.foreground,
+        fontSize: 11,
+        lineHeight: 15,
+        fontWeight: "500" as const,
       },
       placement: { color: colors.foregroundMuted, fontSize: 12, lineHeight: 17 },
       cardBottom: { flexDirection: "row" as const, alignItems: "center" as const, gap: 8 },
@@ -341,6 +368,7 @@ export function ThreadBoardView({
         fontSize: 12,
         fontWeight: "600" as const,
       },
+      disabled: { opacity: 0.45 },
       empty: { paddingHorizontal: 12, paddingVertical: 20, alignItems: "center" as const, gap: 5 },
       emptyTitle: { color: colors.foreground, fontSize: 13, fontWeight: "600" as const },
       emptyCopy: { color: colors.foregroundMuted, fontSize: 12, textAlign: "center" as const },
@@ -352,27 +380,29 @@ export function ThreadBoardView({
     [locallyArchivedIds, threads],
   );
   const childCounts = useMemo(() => countChildren(availableThreads), [availableThreads]);
-  const visible = useMemo(
-    () => visibleThreads(availableThreads, { includeSubagents, showStale, now }),
-    [availableThreads, includeSubagents, now, showStale],
+  const eligibleThreads = useMemo(
+    () => visibleThreads(availableThreads, { includeSubagents, showStale: true, now }),
+    [availableThreads, includeSubagents, now],
+  );
+  const threadGroups = useMemo(() => groupThreads(eligibleThreads, now), [eligibleThreads, now]);
+  const items = useMemo(
+    () => boardItems(threadGroups, { showStale, now }),
+    [now, showStale, threadGroups],
   );
   const lanes = useMemo(() => {
-    const result: Record<LaneId, BoardThread[]> = {
+    const result: Record<LaneId, BoardItem[]> = {
       attention: [],
       running: [],
       idle: [],
       stale: [],
     };
-    for (const thread of visible) result[laneOf(thread, now)].push(thread);
+    for (const item of items) result[item.lane].push(item);
     return result;
-  }, [now, visible]);
+  }, [items]);
   const shownLanes = showStale ? LANES : LANES.filter((lane) => lane !== "stale");
   const childTotal = availableThreads.filter((thread) => thread.parentAgentId !== null).length;
-  const staleTotal = availableThreads.filter(
-    (thread) =>
-      laneOf(thread, now) === "stale" && (includeSubagents || thread.parentAgentId === null),
-  ).length;
-  const activeTotal = visible.filter((thread) => laneOf(thread, now) !== "stale").length;
+  const staleTotal = eligibleThreads.filter((thread) => laneOf(thread, now) === "stale").length;
+  const activeTotal = threadGroups.filter((group) => group.lane !== "stale").length;
 
   const toggleStale = () => {
     setShowStale((current) => {
@@ -432,16 +462,26 @@ export function ThreadBoardView({
     }
   };
 
-  const renderCard = (thread: BoardThread) => {
-    const lane = laneOf(thread, now);
+  const renderCard = (item: BoardItem) => {
+    const { thread, lane, group, kind } = item;
     const statusColor = threadStatusColor(thread, now, theme);
-    const children = childCounts.get(thread.id) ?? 0;
+    const children =
+      kind === "group" && group
+        ? group.tabs.reduce((total, tab) => total + (childCounts.get(tab.id) ?? 0), 0)
+        : (childCounts.get(thread.id) ?? 0);
     const age = relativeAge(thread.lastMessageAt, now);
     const activityLabel =
       age === "now" ? "message sent now" : age ? `last message ${age} ago` : "message time unknown";
     const childLabel =
       children > 0 ? `, ${children} ${children === 1 ? "subagent" : "subagents"}` : "";
-    const accessibleDescription = `${thread.title}, ${stateLabel(thread, now)}, ${placement(thread)}, ${modelLabel(thread)}, ${activityLabel}${childLabel}`;
+    const title = kind === "group" && group ? group.title : thread.title;
+    const relationshipLabel =
+      kind === "group" && group
+        ? `thread group with ${group.tabs.length} tabs, opens the ${LANE_TITLES[group.lane]} tab`
+        : kind === "tab" && group
+          ? `tab of ${group.title}`
+          : null;
+    const accessibleDescription = `${title}, ${relationshipLabel ? `${relationshipLabel}, ` : ""}${stateLabel(thread, now)}, ${placement(thread)}, ${modelLabel(thread)}, ${activityLabel}${childLabel}`;
     const content = (
       <>
         <View style={styles.cardTop}>
@@ -452,8 +492,23 @@ export function ThreadBoardView({
           <Text style={styles.age}>{age}</Text>
         </View>
         <Text style={styles.cardTitle} numberOfLines={2} ellipsizeMode="tail">
-          {thread.title}
+          {title}
         </Text>
+        {kind === "group" && group ? (
+          <View style={styles.relationship}>
+            <Icon name="Layers" size={13} color={theme.colors.foreground} />
+            <Text style={styles.groupRelationshipText} numberOfLines={1} ellipsizeMode="tail">
+              {group.tabs.length} tabs · opens {LANE_TITLES[group.lane]} tab
+            </Text>
+          </View>
+        ) : kind === "tab" && group ? (
+          <View style={styles.relationship}>
+            <Icon name="CornerDownRight" size={13} color={theme.colors.foregroundMuted} />
+            <Text style={styles.relationshipText} numberOfLines={1} ellipsizeMode="tail">
+              Tab of {group.title}
+            </Text>
+          </View>
+        ) : null}
         <Text style={styles.placement} numberOfLines={1} ellipsizeMode="tail">
           {placement(thread)}
         </Text>
@@ -477,12 +532,26 @@ export function ThreadBoardView({
     const archiving = archivingId === thread.id;
     const archiveBlocked = archivingId !== null;
     return (
-      <View key={thread.id} style={[styles.card, layout.compact && styles.cardCompact]}>
+      <View
+        key={item.id}
+        style={[
+          styles.card,
+          layout.compact && styles.cardCompact,
+          kind === "group" && styles.groupCard,
+          kind === "tab" && styles.tabCard,
+        ]}
+      >
         {navigation ? (
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={accessibleDescription}
-            accessibilityHint="Opens this thread in Paseo"
+            accessibilityHint={
+              kind === "group"
+                ? "Opens the most urgent tab in this thread"
+                : kind === "tab"
+                  ? "Opens this tab in Paseo"
+                  : "Opens this thread in Paseo"
+            }
             onPress={() => navigation.openAgent({ agentId: thread.id })}
             style={({ pressed }) => [styles.cardOpen, pressed && styles.cardPressed]}
           >
@@ -491,7 +560,7 @@ export function ThreadBoardView({
         ) : (
           <View style={styles.cardOpen}>{content}</View>
         )}
-        {lane === "stale" ? (
+        {kind !== "group" && lane === "stale" ? (
           <View style={styles.archiveRow} accessibilityLiveRegion="polite">
             {confirmingArchive ? (
               <>
@@ -501,7 +570,11 @@ export function ThreadBoardView({
                   accessibilityLabel={`Cancel archiving ${thread.title}`}
                   disabled={archiving}
                   onPress={() => setConfirmingArchiveId(null)}
-                  style={({ pressed }) => [styles.archiveButton, pressed && styles.pressed]}
+                  style={({ pressed }) => [
+                    styles.archiveButton,
+                    archiving && styles.disabled,
+                    pressed && styles.pressed,
+                  ]}
                 >
                   <Text style={styles.archiveButtonText}>Cancel</Text>
                 </Pressable>
@@ -538,7 +611,11 @@ export function ThreadBoardView({
                   setArchiveError(null);
                   setArchiveNotice(null);
                 }}
-                style={({ pressed }) => [styles.archiveButton, pressed && styles.pressed]}
+                style={({ pressed }) => [
+                  styles.archiveButton,
+                  archiveBlocked && styles.disabled,
+                  pressed && styles.pressed,
+                ]}
               >
                 <Icon name="Archive" size={14} color={theme.colors.foregroundMuted} />
                 <Text style={styles.archiveButtonText}>Archive</Text>
@@ -560,7 +637,7 @@ export function ThreadBoardView({
         key={lane}
         nativeID={panelId}
         role={compact && layout.platform === "web" ? "tabpanel" : undefined}
-        accessibilityLabel={compact ? `${LANE_TITLES[lane]} threads` : undefined}
+        accessibilityLabel={compact ? `${LANE_TITLES[lane]} items` : undefined}
         style={laneStyle}
       >
         {compact ? null : (
@@ -573,7 +650,7 @@ export function ThreadBoardView({
         <FlatList
           style={styles.laneList}
           data={laneThreads}
-          keyExtractor={(thread) => thread.id}
+          keyExtractor={(item) => item.id}
           renderItem={({ item }) => renderCard(item)}
           initialNumToRender={8}
           maxToRenderPerBatch={10}
@@ -581,11 +658,11 @@ export function ThreadBoardView({
           contentContainerStyle={compact ? styles.laneContentCompact : styles.laneContent}
           ListEmptyComponent={
             <View style={styles.empty}>
-              <Text style={styles.emptyTitle}>No threads here</Text>
+              <Text style={styles.emptyTitle}>No items here</Text>
               <Text style={styles.emptyCopy}>
                 {lane === "attention"
                   ? "Nothing needs you right now."
-                  : `No ${LANE_TITLES[lane].toLowerCase()} threads.`}
+                  : `No ${LANE_TITLES[lane].toLowerCase()} items.`}
               </Text>
             </View>
           }
@@ -677,7 +754,7 @@ export function ThreadBoardView({
                 <Pressable
                   key={lane}
                   accessibilityRole="tab"
-                  accessibilityLabel={`${LANE_TITLES[lane]}, ${lanes[lane].length} ${lanes[lane].length === 1 ? "thread" : "threads"}`}
+                  accessibilityLabel={`${LANE_TITLES[lane]}, ${lanes[lane].length} ${lanes[lane].length === 1 ? "item" : "items"}`}
                   accessibilityState={{ selected }}
                   aria-selected={selected}
                   {...(layout.platform === "web"

@@ -15,6 +15,7 @@ function agent(overrides: Record<string, unknown> = {}) {
     createdAt: "2026-09-01T12:00:00.000Z",
     updatedAt: "2026-09-14T12:00:00.000Z",
     lastUserMessageAt: "2026-09-05T12:00:00.000Z",
+    persistence: null,
     ...overrides,
   };
 }
@@ -31,5 +32,29 @@ describe("thread directory projection", () => {
     const thread = toBoardThread(agent({ lastUserMessageAt: null }) as never, null);
 
     expect(thread.lastMessageAt).toBe("2026-09-01T12:00:00.000Z");
+  });
+
+  it("uses the provider-native handle to identify tabs of the same underlying thread", () => {
+    const thread = toBoardThread(
+      agent({
+        persistence: {
+          provider: "codex",
+          sessionId: "paseo-session-1",
+          nativeHandle: "codex-thread-1",
+        },
+      }) as never,
+      null,
+    );
+
+    expect(thread.providerThreadKey).toBe('["codex","codex-thread-1"]');
+  });
+
+  it("falls back to the persistence session id when no native handle is available", () => {
+    const thread = toBoardThread(
+      agent({ persistence: { provider: "claude", sessionId: "claude-session-1" } }) as never,
+      null,
+    );
+
+    expect(thread.providerThreadKey).toBe('["claude","claude-session-1"]');
   });
 });

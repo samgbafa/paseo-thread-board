@@ -24,12 +24,14 @@ The plugin runs inside Paseo and reads the host's agent, workspace, and project 
 
 ## Capabilities and Constraints
 
-- One card represents one agent thread.
+- A provider-native thread appears once as a parent when Paseo has multiple agent tabs for it.
+  Each tab remains visible as a child item in its own live-state lane.
 - The lanes are Needs You, Running, Idle, and Stale.
 - A thread is stale when no user message has been sent for seven days. Viewing a thread does not
   affect this clock. Stale is hidden by default.
 - Top-level threads are shown by default. Users can include subagents; top-level cards show their subagent count.
-- Selecting any card opens the real Paseo thread. Stale cards can also be archived after confirmation.
+- Selecting a thread parent opens its most urgent tab; selecting a child opens that exact Paseo tab.
+  Stale tab cards can also be archived after confirmation.
 - Archived means closed for this board: archived threads leave the board and remain available through Paseo's archive/history surfaces.
 - Lane placement is derived from Paseo state. There is no drag-and-drop and no independent task database.
 - The client must update from Paseo's live subscriptions and work on compact and wide layouts.
@@ -47,6 +49,7 @@ Paseo agent snapshots expose status, attention reason, workspace, project, provi
 
 - Reflect live thread truth rather than inventing parallel workflow state.
 - Put attention-demanding work first.
+- Roll a multi-tab thread up to its most urgent tab without flattening the individual tab states.
 - Keep active work legible when many subagents are running.
 - Make every card a short path back to the actual conversation.
 - Prefer a focused operational view over management controls.
