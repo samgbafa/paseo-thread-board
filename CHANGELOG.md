@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.0 — 2026-09-15
+
+- Consolidate Show subagents and Show stale into a compact View options menu.
+- Add a searchable list view with state filters alongside the Kanban board.
+- Persist the selected view and visibility options in Paseo's host-backed plugin settings.
+
 ## 0.3.1 — 2026-09-14
 
 - Group top-level tabs by their shared Paseo workspace parent instead of their provider session,

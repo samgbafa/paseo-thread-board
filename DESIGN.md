@@ -6,7 +6,8 @@ the ceremony of a second task tracker.
 ## Visual language
 
 - Inherit every color from Paseo's theme tokens. Never derive translucent colors from token strings.
-- Keep the page chrome light: one header, two visibility controls, then the live lanes.
+- Keep the page chrome light: one header with a single View options disclosure, then the live data.
+  The disclosure groups the Kanban/List choice with Show subagents and Show stale checkboxes.
 - Use the status dot as a quick scan aid, always paired with a written state label.
 - Give a Paseo workspace with multiple top-level agent tabs one visually emphasized roll-up parent,
   regardless of differing provider persistence or session handles. Name it from `workspaceName`,
@@ -20,6 +21,8 @@ the ceremony of a second task tracker.
 
 - Wide layouts show the visible lanes together, with independently virtualized vertical lists.
 - Compact layouts show horizontally scrollable status tabs and one virtualized lane at a time.
+- List mode uses one searchable, virtualized column with horizontally scrollable state filters.
+  Attention-demanding rows come first; search spans thread, workspace, project, provider, and model.
 - Place a multi-tab parent in the lane of its most urgent child while keeping each child tab in its
   own live-state lane. Activating the parent opens that urgent child; activating a child opens that
   exact Paseo tab. One Idle and two Stale top-level tabs therefore produce one three-tab Idle parent;
@@ -38,8 +41,8 @@ the ceremony of a second task tracker.
   card immediately, while failure retains it and presents a recoverable error.
 - Never show Archive on a virtual roll-up parent. A stale concrete thread or tab retains the
   confirmed Archive action.
-- Controls meet Paseo's native touch-target floor. Switches and tabs expose their checked or selected
-  state, and compact tabs identify their controlled panel on web.
+- Controls meet Paseo's native touch-target floor. Checkboxes, view selectors, state filters, and
+  tabs expose checked or selected state, and compact tabs identify their controlled panel on web.
 - A card's accessible name includes title, state, placement, provider/model, activity age, and child
   count; its hint explains that activation opens Paseo.
 

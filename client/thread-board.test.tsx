@@ -29,6 +29,7 @@ vi.mock("react-native", async () => {
     Pressable: "Pressable",
     ScrollView: "ScrollView",
     Text: "Text",
+    TextInput: "TextInput",
     View: "View",
   };
 });
@@ -115,7 +116,96 @@ function findCard(renderer: ReactTestRenderer, title: string) {
   );
 }
 
+function openViewOptions(renderer: ReactTestRenderer) {
+  act(() => {
+    renderer.root.findByProps({ accessibilityLabel: "Open view options" }).props.onPress();
+  });
+}
+
 describe("Thread Board happy path", () => {
+  it("opens view options and switches to a filterable list", () => {
+    const renderer = renderBoard([
+      thread({ id: "release", title: "Review the release" }),
+      thread({
+        id: "migration",
+        title: "Resolve migration failure",
+        status: "running",
+        requiresAttention: false,
+        attentionReason: null,
+      }),
+    ]);
+
+    act(() => {
+      renderer.root.findByProps({ accessibilityLabel: "Open view options" }).props.onPress();
+    });
+    expect(renderer.root.findByProps({ accessibilityLabel: "Show subagents" })).toBeTruthy();
+    expect(renderer.root.findByProps({ accessibilityLabel: "Show stale" })).toBeTruthy();
+
+    act(() => {
+      renderer.root.findByProps({ accessibilityLabel: "List view" }).props.onPress();
+    });
+    act(() => {
+      renderer.root.findByProps({ accessibilityLabel: "Filter running state" }).props.onPress();
+    });
+    expect(findCard(renderer, "Resolve migration failure")).toBeTruthy();
+    expect(() => findCard(renderer, "Review the release")).toThrow();
+
+    act(() => {
+      renderer.root.findByProps({ accessibilityLabel: "Filter all state" }).props.onPress();
+    });
+    act(() => {
+      renderer.root
+        .findByProps({ accessibilityLabel: "Filter threads" })
+        .props.onChangeText("migration");
+    });
+
+    expect(findCard(renderer, "Resolve migration failure")).toBeTruthy();
+    expect(() => findCard(renderer, "Review the release")).toThrow();
+
+    act(() => renderer.unmount());
+  });
+
+  it("offers an accurate retry when persisted view options cannot load", () => {
+    const retry = vi.fn();
+    let renderer: ReactTestRenderer | undefined;
+    act(() => {
+      renderer = create(
+        <ThreadBoardView
+          theme={theme}
+          layout={{ compact: false, platform: "web" }}
+          host={{ id: "host-1", label: "Studio" }}
+          threads={[thread()]}
+          status="ready"
+          error={null}
+          refreshing={false}
+          onRefresh={vi.fn()}
+          onArchive={vi.fn(async () => undefined)}
+          viewOptionsReady={false}
+          viewOptionsError="Host unavailable."
+          viewOptionsErrorKind="load"
+          onReloadViewOptions={retry}
+        />,
+      );
+    });
+
+    openViewOptions(renderer as ReactTestRenderer);
+    expect(renderer?.root.findByProps({ accessibilityLabel: "Kanban view" }).props.disabled).toBe(
+      true,
+    );
+    expect(
+      renderer?.root.findByProps({ accessibilityRole: "alert" }).props.children.join(""),
+    ).toContain("View options could not be loaded. Host unavailable.");
+
+    act(() => {
+      renderer?.root
+        .findByProps({ accessibilityLabel: "Retry loading view options" })
+        .props.onPress();
+    });
+    expect(retry).toHaveBeenCalledOnce();
+
+    act(() => renderer?.unmount());
+  });
+
   it("rolls tabs up under one parent while each tab keeps its own lane and destination", () => {
     const openAgent = vi.fn();
     const staleTimestamp = new Date(Date.now() - 8 * 24 * 60 * 60 * 1_000).toISOString();
@@ -174,8 +264,9 @@ describe("Thread Board happy path", () => {
     act(() => idleTab.props.onPress());
     expect(openAgent).toHaveBeenLastCalledWith({ agentId: "idle-tab" });
 
+    openViewOptions(renderer);
     act(() => {
-      renderer.root.findByProps({ accessibilityLabel: "Show stale threads" }).props.onPress();
+      renderer.root.findByProps({ accessibilityLabel: "Show stale" }).props.onPress();
     });
     expect(findCard(renderer, "Old release view").props.accessibilityLabel).toContain(
       "tab of Release 0.8",
@@ -248,8 +339,9 @@ describe("Thread Board happy path", () => {
     expect(() => findCard(renderer, "https://celld.dev/")).toThrow();
     expect(() => findCard(renderer, "Run celld verification")).toThrow();
 
+    openViewOptions(renderer);
     act(() => {
-      renderer.root.findByProps({ accessibilityLabel: "Show stale threads" }).props.onPress();
+      renderer.root.findByProps({ accessibilityLabel: "Show stale" }).props.onPress();
     });
     expect(findCard(renderer, "TinyCloud document sync").props.accessibilityLabel).toContain(
       "tab of Design TinyCloud 2.0 with celld",
@@ -259,7 +351,7 @@ describe("Thread Board happy path", () => {
     );
 
     act(() => {
-      renderer.root.findByProps({ accessibilityLabel: "Include subagent threads" }).props.onPress();
+      renderer.root.findByProps({ accessibilityLabel: "Show subagents" }).props.onPress();
     });
     expect(
       renderer.root.findAll(
@@ -314,13 +406,14 @@ describe("Thread Board happy path", () => {
     });
     expect(openAgent).toHaveBeenCalledWith({ agentId: "root" });
 
+    openViewOptions(renderer);
     act(() => {
-      renderer.root.findByProps({ accessibilityLabel: "Include subagent threads" }).props.onPress();
+      renderer.root.findByProps({ accessibilityLabel: "Show subagents" }).props.onPress();
     });
     expect(findCard(renderer, "Run verification")).toBeTruthy();
 
     act(() => {
-      renderer.root.findByProps({ accessibilityLabel: "Show stale threads" }).props.onPress();
+      renderer.root.findByProps({ accessibilityLabel: "Show stale" }).props.onPress();
     });
     expect(findCard(renderer, "Old migration").props.accessibilityLabel).toContain("Stale");
 
@@ -345,8 +438,9 @@ describe("Thread Board happy path", () => {
     });
     const renderer = renderBoard([staleThread], vi.fn(), onArchive);
 
+    openViewOptions(renderer);
     act(() => {
-      renderer.root.findByProps({ accessibilityLabel: "Show stale threads" }).props.onPress();
+      renderer.root.findByProps({ accessibilityLabel: "Show stale" }).props.onPress();
     });
     act(() => {
       renderer.root.findByProps({ accessibilityLabel: "Archive Old migration" }).props.onPress();
@@ -397,8 +491,9 @@ describe("Thread Board happy path", () => {
       onArchive,
     );
 
+    openViewOptions(renderer);
     act(() => {
-      renderer.root.findByProps({ accessibilityLabel: "Show stale threads" }).props.onPress();
+      renderer.root.findByProps({ accessibilityLabel: "Show stale" }).props.onPress();
     });
     act(() => {
       renderer.root.findByProps({ accessibilityLabel: "Archive Old migration" }).props.onPress();
@@ -449,8 +544,9 @@ describe("Thread Board happy path", () => {
       onArchive,
     );
 
+    openViewOptions(renderer);
     act(() => {
-      renderer.root.findByProps({ accessibilityLabel: "Show stale threads" }).props.onPress();
+      renderer.root.findByProps({ accessibilityLabel: "Show stale" }).props.onPress();
     });
     act(() => {
       renderer.root
@@ -492,7 +588,7 @@ describe("Thread Board happy path", () => {
     act(() => renderer.unmount());
   });
 
-  it("exposes switch and compact tab state to assistive technology", () => {
+  it("exposes view checkbox and compact tab state to assistive technology", () => {
     let renderer: ReactTestRenderer | undefined;
     act(() => {
       renderer = create(
@@ -511,9 +607,8 @@ describe("Thread Board happy path", () => {
       );
     });
 
-    const subagents = renderer?.root.findByProps({
-      accessibilityLabel: "Include subagent threads",
-    });
+    openViewOptions(renderer as ReactTestRenderer);
+    const subagents = renderer?.root.findByProps({ accessibilityLabel: "Show subagents" });
     expect(subagents?.props.accessibilityState).toEqual({ checked: false });
     expect(subagents?.props["aria-checked"]).toBe(false);
 
@@ -526,6 +621,44 @@ describe("Thread Board happy path", () => {
     );
 
     act(() => renderer?.unmount());
+  });
+
+  it("uses the native control-height floor for iOS and Android layouts", () => {
+    for (const [platform, expectedHeight] of [
+      ["ios", 44],
+      ["android", 48],
+    ] as const) {
+      let renderer: ReactTestRenderer | undefined;
+      act(() => {
+        renderer = create(
+          <ThreadBoardView
+            theme={theme}
+            layout={{ compact: true, platform }}
+            host={{ id: "host-1", label: "Studio" }}
+            threads={[thread()]}
+            status="ready"
+            error={null}
+            refreshing={false}
+            onRefresh={vi.fn()}
+            onArchive={vi.fn(async () => undefined)}
+          />,
+        );
+      });
+
+      openViewOptions(renderer as ReactTestRenderer);
+      const viewButtonStyles = renderer?.root
+        .findByProps({ accessibilityLabel: "Close view options" })
+        .props.style({ pressed: false });
+      const checkboxStyles = renderer?.root
+        .findByProps({ accessibilityLabel: "Show subagents" })
+        .props.style({ pressed: false });
+      expect(viewButtonStyles).toContainEqual(
+        expect.objectContaining({ minHeight: expectedHeight }),
+      );
+      expect(checkboxStyles).toContainEqual(expect.objectContaining({ minHeight: expectedHeight }));
+
+      act(() => renderer?.unmount());
+    }
   });
 
   it("renders loading, recoverable error, and empty-lane states", () => {

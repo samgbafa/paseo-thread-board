@@ -1,6 +1,6 @@
 # Thread Board
 
-A live Kanban view of every coding-agent thread on a Paseo host.
+A live Kanban and filterable list view of every coding-agent thread on a Paseo host.
 
 Thread Board answers the operational question: **what is running, and what needs me?** It derives
 each card's lane directly from Paseo, so there is no second task status to maintain.
@@ -12,7 +12,9 @@ each card's lane directly from Paseo, so there is no second task status to maint
   rolls up to the most urgent tab, while each child remains visible in its own live-state lane.
 - Treats threads with no user message in the last seven days as Stale and keeps them hidden by
   default. Merely opening a thread does not reset this clock.
-- Shows top-level threads by default, with a subagent count and an **Include subagents** toggle.
+- Offers Kanban and searchable list views, with state filters in the list.
+- Keeps **Show subagents** and **Show stale** in a compact **View options** menu.
+- Persists the selected view and visibility options in Paseo's host-backed plugin settings.
 - Shows project, workspace, provider, model, attention reason, and recent activity on each card.
 - Opens the most urgent tab when you select a thread parent, or the exact tab when you select a
   child.
@@ -55,8 +57,9 @@ paseo plugin update thread-board
 paseo plugin remove thread-board
 ```
 
-Git installs run no package manager. Thread Board has no server entry point, runtime dependency,
-external API, analytics, or persistence; it reads the selected host through Paseo's client API.
+Git installs run no package manager. Thread Board has no external API or analytics. Its small server
+entry point registers host-backed view settings; thread data still comes directly from Paseo's
+client API.
 
 ## Develop
 

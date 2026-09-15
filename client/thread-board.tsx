@@ -1,21 +1,22 @@
 /*
 THESIS: Live agent state becomes a calm thread-first dispatch board, never a second task tracker.
 OWN-WORLD: Paseo theme tokens, low-chrome lanes, compact status marks, and native controls.
-STORY: See urgent threads, understand each tab's state, then open the right tab in one action.
-FIRST VIEWPORT: Four lanes hold urgent roll-up parents and clearly referenced child tabs; compact clients show one lane at a time.
+STORY: Choose the right density, find urgent threads, then open the exact parent or tab in one action.
+FIRST VIEWPORT: A persisted Kanban or searchable list holds urgent roll-up parents and clearly referenced child tabs; compact Kanban shows one lane at a time.
 FORM: Local extension of the established Thread Board form; no concept roll by local-extension contract.
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
 */
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import { usePaseo } from "@getpaseo/plugin/client";
 import { Icon } from "@getpaseo/plugin/client/react-native";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
   Pressable,
   ScrollView,
   Text,
+  TextInput,
   View,
   type ViewStyle,
 } from "react-native";
@@ -33,9 +34,22 @@ import {
   stateLabel,
   visibleThreads,
 } from "../shared/board";
+import {
+  DEFAULT_VIEW_OPTIONS,
+  type ThreadBoardViewOptions,
+  type ViewMode,
+} from "../shared/view-options";
 import { useThreadDirectory } from "./use-thread-directory";
+import { usePersistedViewOptions } from "./use-view-options";
 
 const CLOCK_INTERVAL_MS = 30_000;
+
+const LIST_LANE_PRIORITY: Record<LaneId, number> = {
+  attention: 0,
+  running: 1,
+  idle: 2,
+  stale: 3,
+};
 
 interface ThreadBoardViewProps extends PluginSurfaceProps {
   threads: readonly BoardThread[];
@@ -44,6 +58,13 @@ interface ThreadBoardViewProps extends PluginSurfaceProps {
   refreshing: boolean;
   onRefresh(): void;
   onArchive(threadId: string): Promise<void>;
+  viewOptions?: ThreadBoardViewOptions;
+  viewOptionsReady?: boolean;
+  viewOptionsSaving?: boolean;
+  viewOptionsError?: string | null;
+  viewOptionsErrorKind?: "load" | "save" | null;
+  onViewOptionsChange?(options: ThreadBoardViewOptions): void;
+  onReloadViewOptions?(): void;
 }
 
 function laneColor(lane: LaneId, theme: PluginSurfaceProps["theme"]): string {
@@ -78,6 +99,7 @@ function modelLabel(thread: BoardThread): string {
 export function ThreadBoardSurface(props: PluginSurfaceProps) {
   const paseo = usePaseo();
   const directory = useThreadDirectory(paseo, props.host.id);
+  const viewOptions = usePersistedViewOptions();
   return (
     <ThreadBoardView
       {...props}
@@ -86,6 +108,13 @@ export function ThreadBoardSurface(props: PluginSurfaceProps) {
       onArchive={async (threadId) => {
         await paseo.agents.ref(threadId).archive();
       }}
+      viewOptions={viewOptions.options}
+      viewOptionsReady={viewOptions.ready}
+      viewOptionsSaving={viewOptions.saving}
+      viewOptionsError={viewOptions.error}
+      viewOptionsErrorKind={viewOptions.errorKind}
+      onViewOptionsChange={viewOptions.update}
+      onReloadViewOptions={() => void viewOptions.reload()}
     />
   );
 }
@@ -101,9 +130,20 @@ export function ThreadBoardView({
   refreshing,
   onRefresh,
   onArchive,
+  viewOptions: controlledViewOptions,
+  viewOptionsReady = true,
+  viewOptionsSaving = false,
+  viewOptionsError = null,
+  viewOptionsErrorKind = null,
+  onViewOptionsChange,
+  onReloadViewOptions,
 }: ThreadBoardViewProps) {
-  const [includeSubagents, setIncludeSubagents] = useState(false);
-  const [showStale, setShowStale] = useState(false);
+  const [localViewOptions, setLocalViewOptions] = useState(DEFAULT_VIEW_OPTIONS);
+  const viewOptions = controlledViewOptions ?? localViewOptions;
+  const { includeSubagents, showStale, viewMode } = viewOptions;
+  const [viewOptionsOpen, setViewOptionsOpen] = useState(false);
+  const [listQuery, setListQuery] = useState("");
+  const [listLane, setListLane] = useState<"all" | LaneId>("all");
   const [compactLane, setCompactLane] = useState<LaneId>("attention");
   const [now, setNow] = useState(() => Date.now());
   const [confirmingArchiveId, setConfirmingArchiveId] = useState<string | null>(null);
@@ -119,6 +159,15 @@ export function ThreadBoardView({
     const interval = setInterval(() => setNow(Date.now()), CLOCK_INTERVAL_MS);
     return () => clearInterval(interval);
   }, []);
+
+  const changeViewOptions = useCallback(
+    (patch: Partial<ThreadBoardViewOptions>) => {
+      const next = { ...viewOptions, ...patch };
+      if (controlledViewOptions === undefined) setLocalViewOptions(next);
+      onViewOptionsChange?.(next);
+    },
+    [controlledViewOptions, onViewOptionsChange, viewOptions],
+  );
 
   const styles = useMemo(() => {
     const colors = theme.colors;
@@ -145,6 +194,7 @@ export function ThreadBoardView({
         gap: 12,
       },
       headingBody: { flex: 1, minWidth: 0 },
+      headingActions: { flexDirection: "row" as const, alignItems: "center" as const, gap: 8 },
       title: {
         color: colors.foreground,
         fontSize: layout.compact ? 20 : 24,
@@ -162,12 +212,7 @@ export function ThreadBoardView({
         justifyContent: "center" as const,
       },
       pressed: { opacity: 0.62 },
-      controls: {
-        flexDirection: "row" as const,
-        flexWrap: "wrap" as const,
-        gap: 8,
-      },
-      toggle: {
+      viewOptionsButton: {
         minHeight: controlHeight,
         paddingHorizontal: 12,
         borderRadius: 10,
@@ -175,14 +220,105 @@ export function ThreadBoardView({
         borderColor: colors.border,
         flexDirection: "row" as const,
         alignItems: "center" as const,
+        justifyContent: "center" as const,
         gap: 7,
       },
-      toggleOn: {
-        borderColor: colors.accent,
+      viewOptionsButtonOpen: {
+        borderColor: colors.foregroundMuted,
         backgroundColor: colors.surface2,
       },
-      toggleText: { color: colors.foregroundMuted, fontSize: 13, fontWeight: "500" as const },
-      toggleTextOn: { color: colors.foreground, fontSize: 13, fontWeight: "600" as const },
+      viewOptionsButtonText: { color: colors.foreground, fontSize: 13, fontWeight: "600" as const },
+      viewOptionsPanel: {
+        borderWidth: 1,
+        borderColor: colors.border,
+        borderRadius: 12,
+        backgroundColor: colors.surface1,
+        padding: 12,
+        gap: 12,
+      },
+      viewOptionsSection: { gap: 8 },
+      viewOptionsLabelRow: {
+        flexDirection: "row" as const,
+        alignItems: "center" as const,
+        minHeight: 20,
+      },
+      viewOptionsLabel: {
+        flex: 1,
+        color: colors.foregroundMuted,
+        fontSize: 11,
+        fontWeight: "600" as const,
+      },
+      saveState: { color: colors.foregroundMuted, fontSize: 11 },
+      viewModeGroup: {
+        alignSelf: "flex-start" as const,
+        flexDirection: "row" as const,
+        borderWidth: 1,
+        borderColor: colors.border,
+        borderRadius: 10,
+        overflow: "hidden" as const,
+      },
+      viewModeOption: {
+        minHeight: controlHeight,
+        minWidth: layout.compact ? 116 : 128,
+        paddingHorizontal: 14,
+        flexDirection: "row" as const,
+        alignItems: "center" as const,
+        justifyContent: "center" as const,
+        gap: 7,
+      },
+      viewModeOptionDivider: { borderLeftWidth: 1, borderLeftColor: colors.border },
+      viewModeOptionOn: { backgroundColor: colors.surface2 },
+      viewModeText: { color: colors.foregroundMuted, fontSize: 13, fontWeight: "500" as const },
+      viewModeTextOn: { color: colors.foreground, fontSize: 13, fontWeight: "600" as const },
+      checkboxGroup: {
+        flexDirection: layout.compact ? ("column" as const) : ("row" as const),
+        flexWrap: "wrap" as const,
+        gap: 8,
+      },
+      checkboxOption: {
+        minHeight: controlHeight,
+        ...(layout.compact ? {} : { width: 280 }),
+        paddingHorizontal: 10,
+        flexDirection: "row" as const,
+        alignItems: "center" as const,
+        gap: 9,
+      },
+      checkbox: {
+        width: 20,
+        height: 20,
+        borderRadius: 5,
+        borderWidth: 1,
+        borderColor: colors.foregroundMuted,
+        alignItems: "center" as const,
+        justifyContent: "center" as const,
+      },
+      checkboxOn: { borderColor: colors.accent, backgroundColor: colors.accent },
+      checkboxLabel: { flex: 1, color: colors.foreground, fontSize: 13 },
+      checkboxCount: {
+        color: colors.foregroundMuted,
+        fontSize: 12,
+        fontVariant: ["tabular-nums" as const],
+      },
+      viewOptionsError: { flex: 1, color: colors.statusDanger, fontSize: 12, lineHeight: 16 },
+      viewOptionsErrorRow: {
+        flexDirection: "row" as const,
+        alignItems: "center" as const,
+        gap: 10,
+      },
+      retryViewOptions: {
+        minHeight: controlHeight,
+        paddingHorizontal: 12,
+        borderRadius: 9,
+        borderWidth: 1,
+        borderColor: colors.statusDanger,
+        alignItems: "center" as const,
+        justifyContent: "center" as const,
+      },
+      retryViewOptionsText: {
+        color: colors.statusDanger,
+        fontSize: 12,
+        fontWeight: "600" as const,
+      },
       error: {
         color: colors.statusDanger,
         backgroundColor: colors.surface1,
@@ -238,6 +374,47 @@ export function ThreadBoardView({
         alignItems: "stretch" as const,
       },
       boardScroll: { flex: 1 },
+      list: { flex: 1, paddingHorizontal: gutter, paddingTop: 12 },
+      listTools: { gap: 10, marginBottom: 12 },
+      search: {
+        minHeight: controlHeight,
+        borderWidth: 1,
+        borderColor: colors.border,
+        borderRadius: 10,
+        backgroundColor: colors.surface1,
+        paddingHorizontal: 12,
+        flexDirection: "row" as const,
+        alignItems: "center" as const,
+        gap: 8,
+      },
+      searchInput: {
+        flex: 1,
+        minWidth: 0,
+        color: colors.foreground,
+        fontSize: 14,
+        paddingVertical: 0,
+      },
+      clearSearch: {
+        width: controlHeight,
+        height: controlHeight,
+        alignItems: "center" as const,
+        justifyContent: "center" as const,
+      },
+      listFilters: { gap: 8 },
+      filterChip: {
+        minHeight: controlHeight,
+        paddingHorizontal: 12,
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: colors.border,
+        flexDirection: "row" as const,
+        alignItems: "center" as const,
+        gap: 7,
+      },
+      filterChipOn: { borderColor: colors.foregroundMuted, backgroundColor: colors.surface2 },
+      filterChipText: { color: colors.foregroundMuted, fontSize: 13 },
+      filterChipTextOn: { color: colors.foreground, fontSize: 13, fontWeight: "600" as const },
+      listContent: { gap: 10, paddingBottom: gutter },
       lane: {
         flex: 1,
         minWidth: 250,
@@ -400,43 +577,100 @@ export function ThreadBoardView({
     return result;
   }, [items]);
   const shownLanes = showStale ? LANES : LANES.filter((lane) => lane !== "stale");
+  const normalizedQuery = listQuery.trim().toLocaleLowerCase();
+  const listItems = useMemo(
+    () =>
+      items
+        .filter((item) => {
+          if (listLane !== "all" && item.lane !== listLane) return false;
+          if (!normalizedQuery) return true;
+          const { thread, group } = item;
+          return [
+            item.kind === "group" ? group?.title : thread.title,
+            thread.title,
+            thread.projectName,
+            thread.workspaceName,
+            thread.provider,
+            thread.model,
+            LANE_TITLES[item.lane],
+            group?.title,
+          ]
+            .filter(Boolean)
+            .some((value) => String(value).toLocaleLowerCase().includes(normalizedQuery));
+        })
+        .sort((left, right) => {
+          const urgency = LIST_LANE_PRIORITY[left.lane] - LIST_LANE_PRIORITY[right.lane];
+          const activity =
+            Date.parse(right.thread.lastMessageAt) - Date.parse(left.thread.lastMessageAt);
+          const kind =
+            (left.kind === "group" ? 0 : left.kind === "thread" ? 1 : 2) -
+            (right.kind === "group" ? 0 : right.kind === "thread" ? 1 : 2);
+          return urgency || activity || kind || left.id.localeCompare(right.id);
+        }),
+    [items, listLane, normalizedQuery],
+  );
   const childTotal = availableThreads.filter((thread) => thread.parentAgentId !== null).length;
   const staleTotal = eligibleThreads.filter((thread) => laneOf(thread, now) === "stale").length;
   const activeTotal = threadGroups.filter((group) => group.lane !== "stale").length;
 
   const toggleStale = () => {
-    setShowStale((current) => {
-      if (current && compactLane === "stale") setCompactLane("attention");
-      if (current) setConfirmingArchiveId(null);
-      return !current;
-    });
+    if (showStale && compactLane === "stale") setCompactLane("attention");
+    if (showStale && listLane === "stale") setListLane("all");
+    if (showStale) setConfirmingArchiveId(null);
+    changeViewOptions({ showStale: !showStale });
   };
 
-  const renderToggle = (
+  const renderViewMode = (mode: ViewMode, label: string, icon: string, divided = false) => {
+    const selected = viewMode === mode;
+    return (
+      <Pressable
+        accessibilityRole="radio"
+        accessibilityLabel={`${label} view`}
+        accessibilityState={{ checked: selected, ...(!viewOptionsReady ? { disabled: true } : {}) }}
+        disabled={!viewOptionsReady}
+        onPress={() => changeViewOptions({ viewMode: mode })}
+        style={({ pressed }) => [
+          styles.viewModeOption,
+          divided && styles.viewModeOptionDivider,
+          selected && styles.viewModeOptionOn,
+          !viewOptionsReady && styles.disabled,
+          pressed && styles.pressed,
+        ]}
+      >
+        <Icon
+          name={icon}
+          size={15}
+          color={selected ? theme.colors.foreground : theme.colors.foregroundMuted}
+        />
+        <Text style={selected ? styles.viewModeTextOn : styles.viewModeText}>{label}</Text>
+      </Pressable>
+    );
+  };
+
+  const renderViewCheckbox = (
     label: string,
-    icon: string,
+    count: number,
     enabled: boolean,
     onPress: () => void,
-    accessibilityLabel: string,
   ) => (
     <Pressable
-      accessibilityRole="switch"
-      accessibilityLabel={accessibilityLabel}
-      accessibilityState={{ checked: enabled }}
+      accessibilityRole="checkbox"
+      accessibilityLabel={label}
+      accessibilityState={{ checked: enabled, ...(!viewOptionsReady ? { disabled: true } : {}) }}
       aria-checked={enabled}
+      disabled={!viewOptionsReady}
       onPress={onPress}
       style={({ pressed }) => [
-        styles.toggle,
-        enabled && styles.toggleOn,
+        styles.checkboxOption,
+        !viewOptionsReady && styles.disabled,
         pressed && styles.pressed,
       ]}
     >
-      <Icon
-        name={icon}
-        size={15}
-        color={enabled ? theme.colors.accent : theme.colors.foregroundMuted}
-      />
-      <Text style={enabled ? styles.toggleTextOn : styles.toggleText}>{label}</Text>
+      <View style={[styles.checkbox, enabled && styles.checkboxOn]}>
+        {enabled ? <Icon name="Check" size={14} color={theme.colors.accentForeground} /> : null}
+      </View>
+      <Text style={styles.checkboxLabel}>{label}</Text>
+      {count > 0 ? <Text style={styles.checkboxCount}>{count}</Text> : null}
     </Pressable>
   );
 
@@ -537,7 +771,7 @@ export function ThreadBoardView({
         key={item.id}
         style={[
           styles.card,
-          layout.compact && styles.cardCompact,
+          (layout.compact || viewMode === "list") && styles.cardCompact,
           kind === "group" && styles.groupCard,
           kind === "tab" && styles.tabCard,
         ]}
@@ -684,36 +918,90 @@ export function ThreadBoardView({
               {activeTotal} active {activeTotal === 1 ? "thread" : "threads"} on {host.label}
             </Text>
           </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Refresh threads"
-            accessibilityState={{ busy: refreshing }}
-            onPress={onRefresh}
-            style={({ pressed }) => [styles.refresh, pressed && styles.pressed]}
-          >
-            {refreshing ? (
-              <ActivityIndicator size="small" color={theme.colors.accent} />
-            ) : (
-              <Icon name="RefreshCw" size={17} color={theme.colors.foregroundMuted} />
-            )}
-          </Pressable>
+          <View style={styles.headingActions}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={viewOptionsOpen ? "Close view options" : "Open view options"}
+              accessibilityState={{ expanded: viewOptionsOpen }}
+              onPress={() => setViewOptionsOpen((current) => !current)}
+              style={({ pressed }) => [
+                styles.viewOptionsButton,
+                viewOptionsOpen && styles.viewOptionsButtonOpen,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Icon name="SlidersHorizontal" size={16} color={theme.colors.foregroundMuted} />
+              <Text style={styles.viewOptionsButtonText}>
+                {layout.compact ? "View" : "View options"}
+              </Text>
+              <Icon
+                name={viewOptionsOpen ? "ChevronUp" : "ChevronDown"}
+                size={15}
+                color={theme.colors.foregroundMuted}
+              />
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Refresh threads"
+              accessibilityState={{ busy: refreshing }}
+              onPress={onRefresh}
+              style={({ pressed }) => [styles.refresh, pressed && styles.pressed]}
+            >
+              {refreshing ? (
+                <ActivityIndicator size="small" color={theme.colors.accent} />
+              ) : (
+                <Icon name="RefreshCw" size={17} color={theme.colors.foregroundMuted} />
+              )}
+            </Pressable>
+          </View>
         </View>
-        <View style={styles.controls}>
-          {renderToggle(
-            childTotal > 0 ? `Subagents ${childTotal}` : "Subagents",
-            "Network",
-            includeSubagents,
-            () => setIncludeSubagents((current) => !current),
-            "Include subagent threads",
-          )}
-          {renderToggle(
-            staleTotal > 0 ? `Stale ${staleTotal}` : "Stale",
-            "Archive",
-            showStale,
-            toggleStale,
-            "Show stale threads",
-          )}
-        </View>
+        {viewOptionsOpen ? (
+          <View accessibilityLabel="View options" style={styles.viewOptionsPanel}>
+            <View style={styles.viewOptionsSection}>
+              <View style={styles.viewOptionsLabelRow}>
+                <Text style={styles.viewOptionsLabel}>VIEW AS</Text>
+                <Text accessibilityLiveRegion="polite" style={styles.saveState}>
+                  {!viewOptionsReady && !viewOptionsError
+                    ? "Loading…"
+                    : viewOptionsSaving
+                      ? "Saving…"
+                      : ""}
+                </Text>
+              </View>
+              <View accessibilityRole="radiogroup" style={styles.viewModeGroup}>
+                {renderViewMode("kanban", "Kanban", "Columns3")}
+                {renderViewMode("list", "List", "List", true)}
+              </View>
+            </View>
+            <View style={styles.viewOptionsSection}>
+              <Text style={styles.viewOptionsLabel}>SHOW</Text>
+              <View accessibilityLabel="Visible threads" style={styles.checkboxGroup}>
+                {renderViewCheckbox("Show subagents", childTotal, includeSubagents, () =>
+                  changeViewOptions({ includeSubagents: !includeSubagents }),
+                )}
+                {renderViewCheckbox("Show stale", staleTotal, showStale, toggleStale)}
+              </View>
+            </View>
+            {viewOptionsError ? (
+              <View style={styles.viewOptionsErrorRow}>
+                <Text accessibilityRole="alert" style={styles.viewOptionsError}>
+                  View options could not be {viewOptionsErrorKind === "load" ? "loaded" : "saved"}.{" "}
+                  {viewOptionsError}
+                </Text>
+                {viewOptionsErrorKind === "load" && onReloadViewOptions ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Retry loading view options"
+                    onPress={onReloadViewOptions}
+                    style={({ pressed }) => [styles.retryViewOptions, pressed && styles.pressed]}
+                  >
+                    <Text style={styles.retryViewOptionsText}>Retry</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            ) : null}
+          </View>
+        ) : null}
       </View>
 
       {error ? (
@@ -738,6 +1026,88 @@ export function ThreadBoardView({
         <View style={styles.loading}>
           <ActivityIndicator size="small" color={theme.colors.accent} />
           <Text style={styles.loadingText}>Loading threads…</Text>
+        </View>
+      ) : viewMode === "list" ? (
+        <View style={styles.list}>
+          <View style={styles.listTools}>
+            <View style={styles.search}>
+              <Icon name="Search" size={16} color={theme.colors.foregroundMuted} />
+              <TextInput
+                accessibilityLabel="Filter threads"
+                placeholder="Filter threads"
+                placeholderTextColor={theme.colors.foregroundMuted}
+                value={listQuery}
+                onChangeText={setListQuery}
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="search"
+                style={styles.searchInput}
+              />
+              {listQuery ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear thread filter"
+                  onPress={() => setListQuery("")}
+                  style={({ pressed }) => [styles.clearSearch, pressed && styles.pressed]}
+                >
+                  <Icon name="X" size={16} color={theme.colors.foregroundMuted} />
+                </Pressable>
+              ) : null}
+            </View>
+            <ScrollView
+              horizontal
+              accessibilityRole="radiogroup"
+              accessibilityLabel="Filter by state"
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.listFilters}
+            >
+              {(["all", ...shownLanes] as const).map((lane) => {
+                const selected = listLane === lane;
+                const label = lane === "all" ? "All" : LANE_TITLES[lane];
+                const count = lane === "all" ? items.length : lanes[lane].length;
+                return (
+                  <Pressable
+                    key={lane}
+                    accessibilityRole="radio"
+                    accessibilityLabel={`Filter ${label.toLocaleLowerCase()} state`}
+                    accessibilityState={{ checked: selected }}
+                    onPress={() => setListLane(lane)}
+                    style={({ pressed }) => [
+                      styles.filterChip,
+                      selected && styles.filterChipOn,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    {lane === "all" ? null : (
+                      <View
+                        style={[styles.statusDot, { backgroundColor: laneColor(lane, theme) }]}
+                      />
+                    )}
+                    <Text style={selected ? styles.filterChipTextOn : styles.filterChipText}>
+                      {label}
+                    </Text>
+                    <Text style={styles.tabCount}>{count}</Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+          <FlatList
+            style={styles.laneList}
+            data={listItems}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => renderCard(item)}
+            initialNumToRender={12}
+            maxToRenderPerBatch={16}
+            windowSize={9}
+            contentContainerStyle={styles.listContent}
+            ListEmptyComponent={
+              <View style={styles.empty}>
+                <Text style={styles.emptyTitle}>No matching threads</Text>
+                <Text style={styles.emptyCopy}>Try another search or state filter.</Text>
+              </View>
+            }
+          />
         </View>
       ) : layout.compact ? (
         <>

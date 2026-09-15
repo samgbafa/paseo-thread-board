@@ -13,7 +13,7 @@ export default function contribute(client: PluginClientContext) {
     id: "open-thread-board",
     title: "Open Thread Board",
     icon: "Columns3",
-    keywords: ["agents", "threads", "kanban", "status", "triage"],
+    keywords: ["agents", "threads", "kanban", "list", "filter", "status", "triage"],
     context: "global",
     onSelect({ openSurface }) {
       openSurface("thread-board");
