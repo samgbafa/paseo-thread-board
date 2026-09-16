@@ -22,7 +22,9 @@ the ceremony of a second task tracker.
 - Wide layouts show the visible lanes together, with independently virtualized vertical lists.
 - Compact layouts show horizontally scrollable status tabs and one virtualized lane at a time.
 - List mode uses one searchable, virtualized column with horizontally scrollable state filters.
-  Attention-demanding rows come first; search spans thread, workspace, project, provider, and model.
+  Attention-demanding parents come first, each directly followed by its matching child tabs. A
+  child-only filter result retains its parent for context, while counts exclude that virtual parent.
+  Search spans thread, workspace, project, provider, and model; one action clears search and state.
 - Place a multi-tab parent in the lane of its most urgent child while keeping each child tab in its
   own live-state lane. Activating the parent opens that urgent child; activating a child opens that
   exact Paseo tab. One Idle and two Stale top-level tabs therefore produce one three-tab Idle parent;

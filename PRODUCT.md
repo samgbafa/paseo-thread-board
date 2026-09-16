@@ -32,8 +32,10 @@ The plugin runs inside Paseo and reads the host's agent, workspace, and project 
 - A thread is stale when no user message has been sent for seven days. Viewing a thread does not
   affect this clock. Stale is hidden by default.
 - Top-level threads are shown by default. Users can include subagents; top-level cards show their subagent count.
-- Users can switch between Kanban and a searchable, state-filterable list. View mode, Show
-  subagents, and Show stale are persisted as host-backed plugin settings; search text is transient.
+- Users can switch between Kanban and a searchable, state-filterable list. The list keeps each
+  multi-tab parent adjacent to its matching child tabs and preserves the parent as context when a
+  filter matches only a child. View mode, Show subagents, and Show stale are persisted as
+  host-backed plugin settings; search text and state filters are transient.
 - Selecting a thread parent opens its most urgent tab; selecting a child opens that exact Paseo tab.
   Stale tab cards can also be archived after confirmation.
 - Archived means closed for this board: archived threads leave the board and remain available through Paseo's archive/history surfaces.

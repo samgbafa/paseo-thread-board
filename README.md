@@ -12,7 +12,10 @@ each card's lane directly from Paseo, so there is no second task status to maint
   rolls up to the most urgent tab, while each child remains visible in its own live-state lane.
 - Treats threads with no user message in the last seven days as Stale and keeps them hidden by
   default. Merely opening a thread does not reset this clock.
-- Offers Kanban and searchable list views, with state filters in the list.
+- Offers Kanban and searchable list views, with state filters in the list. List results keep each
+  multi-tab parent directly above its matching tabs, even when only a child matches the filter.
+- Counts real thread destinations separately from virtual parents and clears search plus state
+  filters in one action.
 - Keeps **Show subagents** and **Show stale** in a compact **View options** menu.
 - Persists the selected view and visibility options in Paseo's host-backed plugin settings.
 - Shows project, workspace, provider, model, attention reason, and recent activity on each card.

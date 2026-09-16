@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.0 — 2026-09-16
+
+- Keep multi-tab thread parents and their matching child tabs together in List view.
+- Preserve parent context when a search or state filter matches only a child tab.
+- Add accurate result counts and one-action filter clearing without counting virtual parents as
+  threads.
+
 ## 0.4.0 — 2026-09-15
 
 - Consolidate Show subagents and Show stale into a compact View options menu.

@@ -165,6 +165,85 @@ describe("Thread Board happy path", () => {
     act(() => renderer.unmount());
   });
 
+  it("keeps matching tabs with their parent context and clears list filters together", () => {
+    const renderer = renderBoard([
+      thread({
+        id: "urgent-tab",
+        title: "Approve the release",
+        workspaceId: "release-workspace",
+        workspaceName: "Release 0.8",
+        createdAt: "2026-09-10T08:00:00.000Z",
+        pendingPermissionCount: 1,
+      }),
+      thread({
+        id: "running-tab",
+        title: "Run release verification",
+        workspaceId: "release-workspace",
+        workspaceName: "Release 0.8",
+        createdAt: "2026-09-11T08:00:00.000Z",
+        status: "running",
+        requiresAttention: false,
+        attentionReason: null,
+      }),
+      thread({
+        id: "idle-tab",
+        title: "Write release notes",
+        workspaceId: "release-workspace",
+        workspaceName: "Release 0.8",
+        createdAt: "2026-09-12T08:00:00.000Z",
+        requiresAttention: false,
+        attentionReason: null,
+      }),
+    ]);
+
+    openViewOptions(renderer);
+    act(() => {
+      renderer.root.findByProps({ accessibilityLabel: "List view" }).props.onPress();
+    });
+    act(() => {
+      renderer.root.findByProps({ accessibilityLabel: "Filter running state" }).props.onPress();
+    });
+    act(() => {
+      renderer.root
+        .findByProps({ accessibilityLabel: "Filter threads" })
+        .props.onChangeText("verification");
+    });
+
+    expect(findCard(renderer, "Release 0.8")).toBeTruthy();
+    expect(findCard(renderer, "Run release verification")).toBeTruthy();
+    expect(() => findCard(renderer, "Approve the release")).toThrow();
+    expect(() => findCard(renderer, "Write release notes")).toThrow();
+    expect(
+      renderer.root
+        .findAll(
+          (node) =>
+            typeof node.props.accessibilityLabel === "string" &&
+            typeof node.props.accessibilityHint === "string" &&
+            node.props.accessibilityHint.startsWith("Opens"),
+        )
+        .map((node) => node.props.accessibilityLabel),
+    ).toEqual([
+      expect.stringMatching(/^Release 0\.8,/),
+      expect.stringMatching(/^Run release verification,/),
+    ]);
+    expect(renderer.root.findByProps({ children: "1 result · 1 parent included" })).toBeTruthy();
+
+    act(() => {
+      renderer.root.findByProps({ accessibilityLabel: "Clear list filters" }).props.onPress();
+    });
+    expect(renderer.root.findByProps({ accessibilityLabel: "Filter threads" }).props.value).toBe(
+      "",
+    );
+    expect(
+      renderer.root.findByProps({ accessibilityLabel: "Filter all state" }).props
+        .accessibilityState,
+    ).toEqual({ checked: true });
+    expect(findCard(renderer, "Approve the release")).toBeTruthy();
+    expect(findCard(renderer, "Write release notes")).toBeTruthy();
+
+    act(() => renderer.unmount());
+  });
+
   it("offers an accurate retry when persisted view options cannot load", () => {
     const retry = vi.fn();
     let renderer: ReactTestRenderer | undefined;
@@ -656,6 +735,19 @@ describe("Thread Board happy path", () => {
         expect.objectContaining({ minHeight: expectedHeight }),
       );
       expect(checkboxStyles).toContainEqual(expect.objectContaining({ minHeight: expectedHeight }));
+
+      act(() => {
+        renderer?.root.findByProps({ accessibilityLabel: "List view" }).props.onPress();
+      });
+      act(() => {
+        renderer?.root.findByProps({ accessibilityLabel: "Filter running state" }).props.onPress();
+      });
+      const clearFilterStyles = renderer?.root
+        .findByProps({ accessibilityLabel: "Clear list filters" })
+        .props.style({ pressed: false });
+      expect(clearFilterStyles).toContainEqual(
+        expect.objectContaining({ minHeight: expectedHeight }),
+      );
 
       act(() => renderer?.unmount());
     }

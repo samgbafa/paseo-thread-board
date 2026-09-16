@@ -1,9 +1,9 @@
 {
   "name": "paseo-thread-board",
   "private": true,
-  "version": "0.4.0",
+  "version": "0.5.0",
   "type": "module",
-  "description": "A live Kanban view of Paseo agent threads.",
+  "description": "Live Kanban and grouped list views of Paseo agent threads.",
   "license": "MIT",
   "author": "samgbafa",
   "repository": "https://github.com/samgbafa/paseo-thread-board",

@@ -2,7 +2,7 @@
 THESIS: Live agent state becomes a calm thread-first dispatch board, never a second task tracker.
 OWN-WORLD: Paseo theme tokens, low-chrome lanes, compact status marks, and native controls.
 STORY: Choose the right density, find urgent threads, then open the exact parent or tab in one action.
-FIRST VIEWPORT: A persisted Kanban or searchable list holds urgent roll-up parents and clearly referenced child tabs; compact Kanban shows one lane at a time.
+FIRST VIEWPORT: A persisted Kanban or hierarchical searchable list holds urgent roll-up parents with their matching child tabs; compact Kanban shows one lane at a time.
 FORM: Local extension of the established Thread Board form; no concept roll by local-extension contract.
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
 */
@@ -65,6 +65,12 @@ interface ThreadBoardViewProps extends PluginSurfaceProps {
   viewOptionsErrorKind?: "load" | "save" | null;
   onViewOptionsChange?(options: ThreadBoardViewOptions): void;
   onReloadViewOptions?(): void;
+}
+
+interface ListSection {
+  id: string;
+  root: BoardItem;
+  children: readonly BoardItem[];
 }
 
 function laneColor(lane: LaneId, theme: PluginSurfaceProps["theme"]): string {
@@ -401,6 +407,26 @@ export function ThreadBoardView({
         justifyContent: "center" as const,
       },
       listFilters: { gap: 8 },
+      listFeedback: {
+        minHeight: controlHeight,
+        flexDirection: "row" as const,
+        alignItems: "center" as const,
+        gap: 12,
+      },
+      listResult: {
+        flex: 1,
+        color: colors.foregroundMuted,
+        fontSize: 12,
+        fontVariant: ["tabular-nums" as const],
+      },
+      clearFilters: {
+        minHeight: controlHeight,
+        paddingHorizontal: 12,
+        borderRadius: 9,
+        alignItems: "center" as const,
+        justifyContent: "center" as const,
+      },
+      clearFiltersText: { color: colors.accent, fontSize: 12, fontWeight: "600" as const },
       filterChip: {
         minHeight: controlHeight,
         paddingHorizontal: 12,
@@ -414,7 +440,8 @@ export function ThreadBoardView({
       filterChipOn: { borderColor: colors.foregroundMuted, backgroundColor: colors.surface2 },
       filterChipText: { color: colors.foregroundMuted, fontSize: 13 },
       filterChipTextOn: { color: colors.foreground, fontSize: 13, fontWeight: "600" as const },
-      listContent: { gap: 10, paddingBottom: gutter },
+      listContent: { gap: 12, paddingBottom: gutter },
+      listSection: { gap: 8 },
       lane: {
         flex: 1,
         minWidth: 250,
@@ -469,7 +496,7 @@ export function ThreadBoardView({
         borderWidth: 1,
         borderColor: colors.border,
       },
-      tabCard: { marginLeft: 10 },
+      tabCard: { marginLeft: layout.compact ? 12 : 20 },
       cardTop: { flexDirection: "row" as const, alignItems: "center" as const, gap: 7 },
       statusDot: { width: 7, height: 7, borderRadius: 4 },
       statusLabel: { flex: 1, fontSize: 11, fontWeight: "600" as const },
@@ -578,37 +605,83 @@ export function ThreadBoardView({
   }, [items]);
   const shownLanes = showStale ? LANES : LANES.filter((lane) => lane !== "stale");
   const normalizedQuery = listQuery.trim().toLocaleLowerCase();
-  const listItems = useMemo(
-    () =>
-      items
-        .filter((item) => {
-          if (listLane !== "all" && item.lane !== listLane) return false;
-          if (!normalizedQuery) return true;
-          const { thread, group } = item;
-          return [
-            item.kind === "group" ? group?.title : thread.title,
-            thread.title,
-            thread.projectName,
-            thread.workspaceName,
-            thread.provider,
-            thread.model,
-            LANE_TITLES[item.lane],
-            group?.title,
-          ]
-            .filter(Boolean)
-            .some((value) => String(value).toLocaleLowerCase().includes(normalizedQuery));
-        })
-        .sort((left, right) => {
-          const urgency = LIST_LANE_PRIORITY[left.lane] - LIST_LANE_PRIORITY[right.lane];
-          const activity =
-            Date.parse(right.thread.lastMessageAt) - Date.parse(left.thread.lastMessageAt);
-          const kind =
-            (left.kind === "group" ? 0 : left.kind === "thread" ? 1 : 2) -
-            (right.kind === "group" ? 0 : right.kind === "thread" ? 1 : 2);
-          return urgency || activity || kind || left.id.localeCompare(right.id);
-        }),
-    [items, listLane, normalizedQuery],
+  const listSections = useMemo(() => {
+    const matchesQuery = (item: BoardItem) => {
+      if (!normalizedQuery) return true;
+      const { thread, group } = item;
+      return [
+        item.kind === "group" ? group?.title : thread.title,
+        thread.title,
+        thread.projectName,
+        thread.workspaceName,
+        thread.provider,
+        thread.model,
+        LANE_TITLES[item.lane],
+        group?.title,
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLocaleLowerCase().includes(normalizedQuery));
+    };
+    const matchesLane = (item: BoardItem) => listLane === "all" || item.lane === listLane;
+    const compareItems = (left: BoardItem, right: BoardItem) => {
+      const urgency = LIST_LANE_PRIORITY[left.lane] - LIST_LANE_PRIORITY[right.lane];
+      const activity =
+        Date.parse(right.thread.lastMessageAt) - Date.parse(left.thread.lastMessageAt);
+      return urgency || activity || left.id.localeCompare(right.id);
+    };
+    const tabsByGroup = new Map<string, BoardItem[]>();
+    const roots: BoardItem[] = [];
+    for (const item of items) {
+      if (item.kind !== "tab" || !item.group) {
+        roots.push(item);
+        continue;
+      }
+      const tabs = tabsByGroup.get(item.group.id);
+      if (tabs) tabs.push(item);
+      else tabsByGroup.set(item.group.id, [item]);
+    }
+
+    const sections: ListSection[] = [];
+    for (const root of roots.sort(compareItems)) {
+      if (root.kind === "thread") {
+        if (matchesLane(root) && matchesQuery(root)) {
+          sections.push({ id: root.id, root, children: [] });
+        }
+        continue;
+      }
+
+      const children = (tabsByGroup.get(root.group?.id ?? "") ?? [])
+        .filter((item) => matchesLane(item) && matchesQuery(item))
+        .sort(compareItems);
+      if (children.length > 0) {
+        sections.push({ id: root.id, root, children });
+      }
+    }
+    return sections;
+  }, [items, listLane, normalizedQuery]);
+  const listResultCount = listSections.reduce(
+    (total, section) => total + (section.root.kind === "group" ? section.children.length : 1),
+    0,
   );
+  const listFiltersActive = listLane !== "all" || normalizedQuery.length > 0;
+  const listContextParentCount = listFiltersActive
+    ? listSections.filter((section) => section.root.kind === "group").length
+    : 0;
+  const listResultLabel = `${listResultCount} ${listFiltersActive ? (listResultCount === 1 ? "result" : "results") : listResultCount === 1 ? "thread" : "threads"}${
+    listContextParentCount > 0
+      ? ` · ${listContextParentCount} ${listContextParentCount === 1 ? "parent" : "parents"} included`
+      : ""
+  }`;
+  const listLaneCounts = useMemo(() => {
+    const destinations = items.filter((item) => item.kind !== "group");
+    return {
+      all: destinations.length,
+      attention: destinations.filter((item) => item.lane === "attention").length,
+      running: destinations.filter((item) => item.lane === "running").length,
+      idle: destinations.filter((item) => item.lane === "idle").length,
+      stale: destinations.filter((item) => item.lane === "stale").length,
+    };
+  }, [items]);
   const childTotal = availableThreads.filter((thread) => thread.parentAgentId !== null).length;
   const staleTotal = eligibleThreads.filter((thread) => laneOf(thread, now) === "stale").length;
   const activeTotal = threadGroups.filter((group) => group.lane !== "stale").length;
@@ -1064,7 +1137,7 @@ export function ThreadBoardView({
               {(["all", ...shownLanes] as const).map((lane) => {
                 const selected = listLane === lane;
                 const label = lane === "all" ? "All" : LANE_TITLES[lane];
-                const count = lane === "all" ? items.length : lanes[lane].length;
+                const count = listLaneCounts[lane];
                 return (
                   <Pressable
                     key={lane}
@@ -1091,12 +1164,35 @@ export function ThreadBoardView({
                 );
               })}
             </ScrollView>
+            <View style={styles.listFeedback}>
+              <Text accessibilityLiveRegion="polite" style={styles.listResult}>
+                {listResultLabel}
+              </Text>
+              {listFiltersActive ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear list filters"
+                  onPress={() => {
+                    setListQuery("");
+                    setListLane("all");
+                  }}
+                  style={({ pressed }) => [styles.clearFilters, pressed && styles.pressed]}
+                >
+                  <Text style={styles.clearFiltersText}>Clear filters</Text>
+                </Pressable>
+              ) : null}
+            </View>
           </View>
           <FlatList
             style={styles.laneList}
-            data={listItems}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => renderCard(item)}
+            data={listSections}
+            keyExtractor={(section) => section.id}
+            renderItem={({ item: section }) => (
+              <View key={section.id} style={styles.listSection}>
+                {renderCard(section.root)}
+                {section.children.map((item) => renderCard(item))}
+              </View>
+            )}
             initialNumToRender={12}
             maxToRenderPerBatch={16}
             windowSize={9}
@@ -1104,7 +1200,7 @@ export function ThreadBoardView({
             ListEmptyComponent={
               <View style={styles.empty}>
                 <Text style={styles.emptyTitle}>No matching threads</Text>
-                <Text style={styles.emptyCopy}>Try another search or state filter.</Text>
+                <Text style={styles.emptyCopy}>Try another search or clear the filters.</Text>
               </View>
             }
           />
