@@ -42,6 +42,9 @@ The plugin runs inside Paseo and reads the host's agent, workspace, and project 
   records are persisted as host-backed plugin settings; search text and state filters are transient.
 - Selecting a thread parent opens its most urgent tab; selecting a child opens that exact Paseo tab.
   Stale tab cards can also be archived after confirmation.
+- Right-clicking a card on desktop or long-pressing it on touch opens actions for that exact parent,
+  tab, or thread. Eligible Needs You work exposes Pause there; stale concrete threads also expose
+  the confirmed Archive flow.
 - Archived means closed for this board: archived threads leave the board and remain available through Paseo's archive/history surfaces.
 - Lane placement combines Paseo runtime state with the persisted attention/Pause record. There is
   no drag-and-drop or general-purpose task database.
@@ -63,6 +66,8 @@ Paseo agent snapshots expose status, attention reason, workspace, project, provi
 - Roll a multi-tab thread up to its most urgent tab without flattening the individual tab states.
 - Keep active work legible when many subagents are running.
 - Make every card a short path back to the actual conversation.
+- Keep secondary card actions available from both pointer and touch input without making the board
+  depend on hover.
 - Prefer a focused operational view over management controls; progressively disclose view options.
 
 ## Accessibility & Inclusion

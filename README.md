@@ -22,6 +22,8 @@ activity drives the board, with one deliberate workflow action for setting revie
 - Counts real thread destinations separately from virtual parents and clears search plus state
   filters in one action.
 - Keeps **Show subagents** and **Show stale** in a compact **View options** menu.
+- Opens card actions with right-click on desktop or long-press on touch. **Pause** lives in this
+  menu for eligible Needs You work; stale threads also offer the same protected Archive flow.
 - Persists view options, sticky attention, and manual pauses in Paseo's host-backed plugin settings.
 - Shows project, workspace, provider, model, attention reason, and recent activity on each card.
 - Opens the most urgent tab when you select a thread parent, or the exact tab when you select a

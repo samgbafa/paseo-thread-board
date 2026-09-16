@@ -16,7 +16,8 @@ the ceremony of a second task tracker.
   `Tab of <workspace parent>` so the hierarchy remains explicit without relying on indentation alone.
 - Keep every card directly openable to the underlying Paseo thread. Stale cards add a secondary,
   protected Archive action.
-- Give completed and failed cards a clear Pause action. Opening the card never changes its board
+- Give completed and failed cards a contextual Pause action. Right-click opens the action panel on
+  desktop and long-press opens the same panel on touch. Opening the card never changes its board
   state; Pause is the explicit acknowledgement.
 
 ## Responsive behavior
@@ -51,7 +52,8 @@ the ceremony of a second task tracker.
 - Controls meet Paseo's native touch-target floor. Checkboxes, view selectors, state filters, and
   tabs expose checked or selected state, and compact tabs identify their controlled panel on web.
 - A card's accessible name includes title, state, placement, provider/model, activity age, and child
-  count; its hint explains that activation opens Paseo.
+  count; its hint explains that activation opens Paseo and that right-click or long-press reveals
+  actions. The revealed action panel has a labeled close control and platform-sized touch targets.
 
 ## Do / don't
 

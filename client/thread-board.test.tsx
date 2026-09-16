@@ -26,6 +26,7 @@ vi.mock("react-native", async () => {
           ? data.map((item, index) => renderItem({ item, index }))
           : ListEmptyComponent,
       ),
+    Platform: { OS: "web" },
     Pressable: "Pressable",
     ScrollView: "ScrollView",
     Text: "Text",
@@ -128,15 +129,36 @@ function openViewOptions(renderer: ReactTestRenderer) {
 }
 
 describe("Thread Board happy path", () => {
-  it("lets the user explicitly move a finished thread to Paused", () => {
+  it("opens thread actions on right-click and moves eligible work to Paused", () => {
     const onPause = vi.fn();
+    const openAgent = vi.fn();
     const finished = thread({ title: "Review the release" });
     const renderer = renderBoard(
       [finished],
-      vi.fn(),
+      openAgent,
       vi.fn(async () => undefined),
       onPause,
     );
+    const preventDefault = vi.fn();
+    const stopPropagation = vi.fn();
+
+    expect(() =>
+      renderer.root.findByProps({ accessibilityLabel: "Pause Review the release" }),
+    ).toThrow();
+
+    act(() => {
+      findCard(renderer, "Review the release").props.onContextMenu({
+        preventDefault,
+        stopPropagation,
+      });
+    });
+
+    expect(preventDefault).toHaveBeenCalledOnce();
+    expect(stopPropagation).toHaveBeenCalledOnce();
+    expect(openAgent).not.toHaveBeenCalled();
+    expect(
+      renderer.root.findByProps({ accessibilityLabel: "Open Review the release" }),
+    ).toBeTruthy();
 
     act(() => {
       renderer.root.findByProps({ accessibilityLabel: "Pause Review the release" }).props.onPress();
@@ -152,6 +174,64 @@ describe("Thread Board happy path", () => {
             "Paused Review the release. New activity will return it to the active board.",
       ),
     ).toBeTruthy();
+    expect(() =>
+      renderer.root.findByProps({ accessibilityLabel: "Pause Review the release" }),
+    ).toThrow();
+
+    act(() => renderer.unmount());
+  });
+
+  it("opens the same thread actions on long-press without opening the thread", () => {
+    const openAgent = vi.fn();
+    const renderer = renderBoard([thread()], openAgent);
+
+    act(() => {
+      findCard(renderer, "Review the release").props.onLongPress();
+    });
+
+    expect(openAgent).not.toHaveBeenCalled();
+    expect(
+      renderer.root.findByProps({ accessibilityLabel: "Open Review the release" }),
+    ).toBeTruthy();
+    expect(
+      renderer.root.findByProps({ accessibilityLabel: "Pause Review the release" }),
+    ).toBeTruthy();
+
+    act(() => {
+      renderer.root
+        .findByProps({ accessibilityLabel: "Close actions for Review the release" })
+        .props.onPress();
+    });
+    expect(() =>
+      renderer.root.findByProps({ accessibilityLabel: "Open Review the release" }),
+    ).toThrow();
+
+    act(() => renderer.unmount());
+  });
+
+  it("keeps Pause out of a running thread's actions", () => {
+    const renderer = renderBoard([
+      thread({
+        title: "Run release checks",
+        status: "running",
+        requiresAttention: false,
+        attentionReason: null,
+      }),
+    ]);
+
+    act(() => {
+      findCard(renderer, "Run release checks").props.onContextMenu({
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+      });
+    });
+
+    expect(
+      renderer.root.findByProps({ accessibilityLabel: "Open Run release checks" }),
+    ).toBeTruthy();
+    expect(() =>
+      renderer.root.findByProps({ accessibilityLabel: "Pause Run release checks" }),
+    ).toThrow();
 
     act(() => renderer.unmount());
   });
@@ -555,7 +635,15 @@ describe("Thread Board happy path", () => {
       renderer.root.findByProps({ accessibilityLabel: "Show stale" }).props.onPress();
     });
     act(() => {
-      renderer.root.findByProps({ accessibilityLabel: "Archive Old migration" }).props.onPress();
+      findCard(renderer, "Old migration").props.onContextMenu({
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+      });
+    });
+    act(() => {
+      renderer.root
+        .findByProps({ accessibilityLabel: "Archive Old migration from actions" })
+        .props.onPress();
     });
     expect(onArchive).not.toHaveBeenCalled();
     expect(renderer.root.findByProps({ children: "Archive this thread?" })).toBeTruthy();

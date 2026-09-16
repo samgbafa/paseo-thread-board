@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.0 — 2026-09-16
+
+- Add card action panels opened by right-click on desktop or long-press on touch clients.
+- Move Pause into the contextual action panel while keeping ordinary card activation focused on
+  opening the thread.
+- Offer Open and eligible stale-thread Archive actions from the same panel, with Archive still
+  requiring confirmation.
+
 ## 0.6.0 — 2026-09-16
 
 - Replace Idle with an explicit Paused workflow state.
