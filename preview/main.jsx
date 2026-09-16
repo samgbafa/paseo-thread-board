@@ -176,7 +176,12 @@ const initialThreads = [
     updatedAt: ago(1),
     lastMessageAt: ago(8 * 24 * 60),
   },
-];
+].map((thread) => ({
+  ...thread,
+  attentionTimestamp: thread.requiresAttention ? thread.updatedAt : null,
+  workflowState: null,
+  workflowAttentionReason: null,
+}));
 
 const theme = {
   colors: {
@@ -220,6 +225,20 @@ function Preview() {
       onRefresh={() => undefined}
       onArchive={async (threadId) => {
         setThreads((current) => current.filter((thread) => thread.id !== threadId));
+      }}
+      onPause={(pausedThreads) => {
+        const pausedIds = new Set(pausedThreads.map((thread) => thread.id));
+        setThreads((current) =>
+          current.map((thread) =>
+            pausedIds.has(thread.id)
+              ? {
+                  ...thread,
+                  workflowState: "paused",
+                  workflowAttentionReason: null,
+                }
+              : thread,
+          ),
+        );
       }}
     />
   );

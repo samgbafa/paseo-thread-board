@@ -28,6 +28,7 @@ describe("thread directory projection", () => {
     expect(thread.updatedAt).toBe("2026-09-14T12:00:00.000Z");
     expect(thread.lastMessageAt).toBe("2026-09-05T12:00:00.000Z");
     expect(thread.workspaceId).toBe("workspace-1");
+    expect(thread.workflowState).toBeNull();
   });
 
   it("uses creation time when a thread has no sent messages", () => {
@@ -41,5 +42,18 @@ describe("thread directory projection", () => {
     const thread = toBoardThread(agent({ workspaceId: undefined }) as never, null, existing);
 
     expect(thread.workspaceId).toBe("workspace-1");
+  });
+
+  it("keeps the attention timestamp needed to distinguish later activity", () => {
+    const thread = toBoardThread(
+      agent({
+        requiresAttention: true,
+        attentionReason: "finished",
+        attentionTimestamp: "2026-09-14T12:01:00.000Z",
+      }) as never,
+      null,
+    );
+
+    expect(thread.attentionTimestamp).toBe("2026-09-14T12:01:00.000Z");
   });
 });

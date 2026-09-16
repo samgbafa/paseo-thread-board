@@ -69,6 +69,7 @@ function thread(overrides: Partial<BoardThread> = {}): BoardThread {
     status: "idle",
     requiresAttention: true,
     attentionReason: "finished",
+    attentionTimestamp: freshTimestamp,
     pendingPermissionCount: 0,
     parentAgentId: null,
     workspaceId: null,
@@ -79,6 +80,8 @@ function thread(overrides: Partial<BoardThread> = {}): BoardThread {
     createdAt: freshTimestamp,
     updatedAt: freshTimestamp,
     lastMessageAt: freshTimestamp,
+    workflowState: null,
+    workflowAttentionReason: null,
     ...overrides,
   };
 }
@@ -87,6 +90,7 @@ function renderBoard(
   threads: readonly BoardThread[],
   openAgent = vi.fn(),
   onArchive: (threadId: string) => Promise<void> = vi.fn(async () => undefined),
+  onPause: (threads: readonly BoardThread[]) => void = vi.fn(),
 ): ReactTestRenderer {
   let renderer: ReactTestRenderer | undefined;
   act(() => {
@@ -102,6 +106,7 @@ function renderBoard(
         refreshing={false}
         onRefresh={vi.fn()}
         onArchive={onArchive}
+        onPause={onPause}
       />,
     );
   });
@@ -123,6 +128,34 @@ function openViewOptions(renderer: ReactTestRenderer) {
 }
 
 describe("Thread Board happy path", () => {
+  it("lets the user explicitly move a finished thread to Paused", () => {
+    const onPause = vi.fn();
+    const finished = thread({ title: "Review the release" });
+    const renderer = renderBoard(
+      [finished],
+      vi.fn(),
+      vi.fn(async () => undefined),
+      onPause,
+    );
+
+    act(() => {
+      renderer.root.findByProps({ accessibilityLabel: "Pause Review the release" }).props.onPress();
+    });
+
+    expect(onPause).toHaveBeenCalledWith([finished]);
+    expect(
+      renderer.root.find(
+        (node) =>
+          String(node.type) === "Text" &&
+          Array.isArray(node.props.children) &&
+          node.props.children.join("") ===
+            "Paused Review the release. New activity will return it to the active board.",
+      ),
+    ).toBeTruthy();
+
+    act(() => renderer.unmount());
+  });
+
   it("opens view options and switches to a filterable list", () => {
     const renderer = renderBoard([
       thread({ id: "release", title: "Review the release" }),
@@ -362,7 +395,7 @@ describe("Thread Board happy path", () => {
     act(() => renderer.unmount());
   });
 
-  it("shows one Idle parent for one idle and two stale tabs without counting subagents", () => {
+  it("shows one Paused parent for one current and two stale tabs without counting subagents", () => {
     const staleTimestamp = new Date(Date.now() - 8 * 24 * 60 * 60 * 1_000).toISOString();
     const renderer = renderBoard([
       thread({
@@ -410,7 +443,7 @@ describe("Thread Board happy path", () => {
           "Design TinyCloud 2.0 with celld, thread group with 3 tabs",
         ),
     );
-    expect(parent.props.accessibilityLabel).toContain("opens the Idle tab, Idle");
+    expect(parent.props.accessibilityLabel).toContain("opens the Paused tab, Paused");
     expect(
       findCard(renderer, "Tell me about the TinyCloud update").props.accessibilityLabel,
     ).toContain("tab of Design TinyCloud 2.0 with celld");

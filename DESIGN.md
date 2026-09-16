@@ -16,6 +16,8 @@ the ceremony of a second task tracker.
   `Tab of <workspace parent>` so the hierarchy remains explicit without relying on indentation alone.
 - Keep every card directly openable to the underlying Paseo thread. Stale cards add a secondary,
   protected Archive action.
+- Give completed and failed cards a clear Pause action. Opening the card never changes its board
+  state; Pause is the explicit acknowledgement.
 
 ## Responsive behavior
 
@@ -27,17 +29,20 @@ the ceremony of a second task tracker.
   Search spans thread, workspace, project, provider, and model; one action clears search and state.
 - Place a multi-tab parent in the lane of its most urgent child while keeping each child tab in its
   own live-state lane. Activating the parent opens that urgent child; activating a child opens that
-  exact Paseo tab. One Idle and two Stale top-level tabs therefore produce one three-tab Idle parent;
-  the two stale children appear when Stale is enabled.
-- The lanes are Needs You, Running, Idle, and Stale. A thread becomes stale at seven days or more
-  since its last user message; metadata updates such as viewing a thread do not affect the clock.
-  Stale and subagent threads remain opt-in so the first view emphasizes recently active top-level
-  work.
+  exact Paseo tab. One current Paused and two stale Paused top-level tabs therefore produce one
+  three-tab Paused parent; the two stale children appear when Show stale is enabled.
+- The lanes are Needs You, Running, and Paused. A thread becomes stale at seven days or more since
+  its last user message; metadata updates such as viewing a thread do not affect the clock. Stale is
+  displayed as a secondary badge. Needs You overrides age, while paused stale and subagent threads
+  remain opt-in so the first view emphasizes current top-level work.
+- A new prompt, run, completion, error, or permission request releases a saved Pause. The new live
+  state determines the destination lane.
 
 ## States and accessibility
 
-- Loading, refresh, recoverable error, lane-empty, pressed, selected, archive-confirmation, and
-  archive-progress states must remain understandable in every Paseo theme.
+- Loading, refresh, recoverable error, lane-empty, pressed, selected, pause-save,
+  archive-confirmation, and archive-progress states must remain understandable in every Paseo
+  theme.
 - Allow one archive transaction at a time. Disable competing Archive controls until it settles;
   semantically disabled archive controls also use unmistakably reduced opacity. Success removes the
   card immediately, while failure retains it and presents a recoverable error.
@@ -51,13 +56,13 @@ the ceremony of a second task tracker.
 ## Do / don't
 
 - Do sort within lanes by recent activity and put attention-demanding work first.
-- Do keep lane assignment derived from Paseo runtime state.
+- Do let new Paseo runtime activity override a saved Pause automatically.
 - Do keep the urgency-first parent, indented `Tab of …` children in their own lanes, and distinct
   subagent language.
 - Do require confirmation before archiving an individual stale thread.
 - Don't offer Archive on a virtual roll-up parent.
-- Don't add an Archived lane, bulk actions, drag-and-drop, editable task state, a configurable stale
-  threshold, analytics, or external persistence to this surface.
+- Don't add an Archived lane, bulk actions, drag-and-drop, arbitrary editable states, a configurable
+  stale threshold, analytics, or external persistence to this surface.
 - Don't introduce a new palette or raster assets; Thread Board remains entirely within Paseo's theme
   tokens and native iconography.
 - Don't hide status behind color, motion, hover, or platform-specific gestures.
