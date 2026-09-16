@@ -43,6 +43,7 @@ import {
 import { useThreadDirectory } from "./use-thread-directory";
 import { useThreadWorkflow } from "./use-thread-workflow";
 import { usePersistedViewOptions } from "./use-view-options";
+import { webContextMenuProps } from "./web";
 
 const CLOCK_INTERVAL_MS = 30_000;
 
@@ -181,6 +182,7 @@ export function ThreadBoardView({
   const [listLane, setListLane] = useState<"all" | LaneId>("all");
   const [compactLane, setCompactLane] = useState<LaneId>("attention");
   const [now, setNow] = useState(() => Date.now());
+  const [cardActionsId, setCardActionsId] = useState<string | null>(null);
   const [confirmingArchiveId, setConfirmingArchiveId] = useState<string | null>(null);
   const [archivingId, setArchivingId] = useState<string | null>(null);
   const archiveInFlightId = useRef<string | null>(null);
@@ -585,6 +587,55 @@ export function ThreadBoardView({
       cardBottom: { flexDirection: "row" as const, alignItems: "center" as const, gap: 8 },
       model: { flex: 1, color: colors.foregroundMuted, fontSize: 11 },
       childCount: { color: colors.foregroundMuted, fontSize: 11 },
+      actionMenu: {
+        paddingHorizontal: 10,
+        paddingVertical: 8,
+        borderTopWidth: 1,
+        borderTopColor: colors.border,
+        gap: 8,
+        backgroundColor: colors.surface1,
+      },
+      actionMenuHeader: {
+        minHeight: controlHeight,
+        flexDirection: "row" as const,
+        alignItems: "center" as const,
+        gap: 8,
+      },
+      actionMenuTitle: {
+        flex: 1,
+        color: colors.foregroundMuted,
+        fontSize: 11,
+        fontWeight: "600" as const,
+      },
+      actionMenuClose: {
+        width: controlHeight,
+        height: controlHeight,
+        borderRadius: 9,
+        alignItems: "center" as const,
+        justifyContent: "center" as const,
+      },
+      actionMenuItems: {
+        flexDirection: "row" as const,
+        flexWrap: "wrap" as const,
+        justifyContent: "flex-end" as const,
+        gap: 7,
+      },
+      actionMenuButton: {
+        minHeight: controlHeight,
+        paddingHorizontal: 12,
+        borderRadius: 9,
+        borderWidth: 1,
+        borderColor: colors.border,
+        flexDirection: "row" as const,
+        alignItems: "center" as const,
+        justifyContent: "center" as const,
+        gap: 6,
+      },
+      actionMenuButtonText: {
+        color: colors.foreground,
+        fontSize: 12,
+        fontWeight: "600" as const,
+      },
       archiveRow: {
         minHeight: controlHeight,
         paddingHorizontal: 10,
@@ -746,7 +797,10 @@ export function ThreadBoardView({
   const visibleThreadTotal = items.filter((item) => item.kind !== "tab").length;
 
   const toggleStale = () => {
-    if (showStale) setConfirmingArchiveId(null);
+    if (showStale) {
+      setCardActionsId(null);
+      setConfirmingArchiveId(null);
+    }
     changeViewOptions({ showStale: !showStale });
   };
 
@@ -813,6 +867,7 @@ export function ThreadBoardView({
     try {
       await onArchive(thread.id);
       setLocallyArchivedIds((current) => new Set(current).add(thread.id));
+      setCardActionsId(null);
       setConfirmingArchiveId(null);
       setArchiveNotice(`Archived ${thread.title}.`);
     } catch (cause) {
@@ -914,6 +969,28 @@ export function ThreadBoardView({
       );
     const showPause = Boolean(onPause && pauseEligible);
     const showArchive = kind !== "group" && stale;
+    const actionsOpen = cardActionsId === item.id;
+    const openThread = () => {
+      setCardActionsId(null);
+      onObserveThreads?.(pauseTargets);
+      navigation?.openAgent({ agentId: thread.id });
+    };
+    const toggleActions = () => {
+      setConfirmingArchiveId(null);
+      setCardActionsId((current) => (current === item.id ? null : item.id));
+    };
+    const pauseThread = () => {
+      setCardActionsId(null);
+      onPause?.(pauseTargets);
+      setWorkflowNotice(`Paused ${title}. New activity will return it to the active board.`);
+    };
+    const requestArchive = () => {
+      if (archiveBlocked) return;
+      setCardActionsId(null);
+      setConfirmingArchiveId(thread.id);
+      setArchiveError(null);
+      setArchiveNotice(null);
+    };
     return (
       <View
         key={item.id}
@@ -924,21 +1001,24 @@ export function ThreadBoardView({
           kind === "tab" && styles.tabCard,
         ]}
       >
-        {navigation ? (
+        {navigation || showPause || showArchive ? (
           <Pressable
+            {...webContextMenuProps(toggleActions)}
             accessibilityRole="button"
             accessibilityLabel={accessibleDescription}
             accessibilityHint={
-              kind === "group"
-                ? "Opens the most urgent tab in this thread"
-                : kind === "tab"
-                  ? "Opens this tab in Paseo"
-                  : "Opens this thread in Paseo"
+              !navigation
+                ? "Opens thread actions"
+                : kind === "group"
+                  ? "Opens the most urgent tab in this thread. Right-click or long-press for actions"
+                  : kind === "tab"
+                    ? "Opens this tab in Paseo. Right-click or long-press for actions"
+                    : "Opens this thread in Paseo. Right-click or long-press for actions"
             }
-            onPress={() => {
-              onObserveThreads?.(pauseTargets);
-              navigation.openAgent({ agentId: thread.id });
-            }}
+            accessibilityState={{ expanded: actionsOpen }}
+            delayLongPress={350}
+            onLongPress={toggleActions}
+            onPress={navigation ? openThread : toggleActions}
             style={({ pressed }) => [styles.cardOpen, pressed && styles.cardPressed]}
           >
             {content}
@@ -946,7 +1026,80 @@ export function ThreadBoardView({
         ) : (
           <View style={styles.cardOpen}>{content}</View>
         )}
-        {showPause || showArchive ? (
+        {actionsOpen ? (
+          <View
+            accessibilityLabel={`Actions for ${title}`}
+            accessibilityLiveRegion="polite"
+            style={styles.actionMenu}
+          >
+            <View style={styles.actionMenuHeader}>
+              <Text style={styles.actionMenuTitle} numberOfLines={1} ellipsizeMode="tail">
+                Thread actions
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Close actions for ${title}`}
+                onPress={() => setCardActionsId(null)}
+                style={({ pressed }) => [styles.actionMenuClose, pressed && styles.pressed]}
+              >
+                <Icon name="X" size={16} color={theme.colors.foregroundMuted} />
+              </Pressable>
+            </View>
+            <View style={styles.actionMenuItems}>
+              {navigation ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open ${title}`}
+                  onPress={openThread}
+                  style={({ pressed }) => [styles.actionMenuButton, pressed && styles.pressed]}
+                >
+                  <Icon name="ExternalLink" size={14} color={theme.colors.foreground} />
+                  <Text style={styles.actionMenuButtonText}>Open</Text>
+                </Pressable>
+              ) : null}
+              {showPause ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`${kind === "group" ? "Pause all tabs in" : "Pause"} ${title}`}
+                  accessibilityHint="Keeps this work paused until a new action occurs"
+                  accessibilityState={{ disabled: !workflowReady }}
+                  disabled={!workflowReady}
+                  onPress={pauseThread}
+                  style={({ pressed }) => [
+                    styles.actionMenuButton,
+                    styles.pauseButton,
+                    !workflowReady && styles.disabled,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Icon name="Pause" size={14} color={theme.colors.statusWarning} />
+                  <Text style={styles.pauseButtonText}>
+                    {kind === "group" ? "Pause all" : "Pause"}
+                  </Text>
+                </Pressable>
+              ) : null}
+              {showArchive ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Archive ${thread.title} from actions`}
+                  accessibilityHint="Asks for confirmation before archiving"
+                  accessibilityState={{ disabled: archiveBlocked }}
+                  disabled={archiveBlocked}
+                  onPress={requestArchive}
+                  style={({ pressed }) => [
+                    styles.actionMenuButton,
+                    archiveBlocked && styles.disabled,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Icon name="Archive" size={14} color={theme.colors.foregroundMuted} />
+                  <Text style={styles.archiveButtonText}>Archive</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          </View>
+        ) : null}
+        {showArchive ? (
           <View style={styles.archiveRow} accessibilityLiveRegion="polite">
             {showArchive && confirmingArchive ? (
               <>
@@ -985,57 +1138,22 @@ export function ThreadBoardView({
                 </Pressable>
               </>
             ) : (
-              <>
-                {showPause ? (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`${kind === "group" ? "Pause all tabs in" : "Pause"} ${title}`}
-                    accessibilityHint="Keeps this work paused until a new action occurs"
-                    accessibilityState={{ disabled: !workflowReady }}
-                    disabled={!workflowReady}
-                    onPress={() => {
-                      onPause?.(pauseTargets);
-                      setWorkflowNotice(
-                        `Paused ${title}. New activity will return it to the active board.`,
-                      );
-                    }}
-                    style={({ pressed }) => [
-                      styles.archiveButton,
-                      styles.pauseButton,
-                      !workflowReady && styles.disabled,
-                      pressed && styles.pressed,
-                    ]}
-                  >
-                    <Icon name="Pause" size={14} color={theme.colors.statusWarning} />
-                    <Text style={styles.pauseButtonText}>
-                      {kind === "group" ? "Pause all" : "Pause"}
-                    </Text>
-                  </Pressable>
-                ) : null}
-                {showArchive ? (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`Archive ${thread.title}`}
-                    accessibilityHint="Asks for confirmation before archiving"
-                    accessibilityState={{ disabled: archiveBlocked }}
-                    disabled={archiveBlocked}
-                    onPress={() => {
-                      if (archiveBlocked) return;
-                      setConfirmingArchiveId(thread.id);
-                      setArchiveError(null);
-                      setArchiveNotice(null);
-                    }}
-                    style={({ pressed }) => [
-                      styles.archiveButton,
-                      archiveBlocked && styles.disabled,
-                      pressed && styles.pressed,
-                    ]}
-                  >
-                    <Icon name="Archive" size={14} color={theme.colors.foregroundMuted} />
-                    <Text style={styles.archiveButtonText}>Archive</Text>
-                  </Pressable>
-                ) : null}
-              </>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Archive ${thread.title}`}
+                accessibilityHint="Asks for confirmation before archiving"
+                accessibilityState={{ disabled: archiveBlocked }}
+                disabled={archiveBlocked}
+                onPress={requestArchive}
+                style={({ pressed }) => [
+                  styles.archiveButton,
+                  archiveBlocked && styles.disabled,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Icon name="Archive" size={14} color={theme.colors.foregroundMuted} />
+                <Text style={styles.archiveButtonText}>Archive</Text>
+              </Pressable>
             )}
           </View>
         ) : null}
