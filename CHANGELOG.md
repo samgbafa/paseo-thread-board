@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.1 — 2026-09-16
+
+- Keep sticky attention from lightweight agent-directory updates instead of full turn-ended
+  lifecycle payloads, preventing large conversation timelines from exhausting plugin memory.
+
 ## 0.7.0 — 2026-09-16
 
 - Add card action panels opened by right-click on desktop or long-press on touch clients.

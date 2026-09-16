@@ -12,9 +12,9 @@ describe("Thread Board server contribution", () => {
     const cleanup = contribute({ registerSettings, on, handle } as never);
 
     expect(registerSettings.mock.calls).toEqual([[threadBoardViewOptions], [threadBoardWorkflow]]);
-    expect(on).toHaveBeenCalledTimes(3);
+    expect(on).toHaveBeenCalledTimes(2);
     expect(handle).toHaveBeenCalledTimes(2);
     cleanup();
-    expect(removeHook).toHaveBeenCalledTimes(3);
+    expect(removeHook).toHaveBeenCalledTimes(2);
   });
 });
