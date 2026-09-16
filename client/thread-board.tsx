@@ -26,6 +26,7 @@ import {
   boardItems,
   countChildren,
   groupThreads,
+  isStale,
   LANE_TITLES,
   LANES,
   type LaneId,
@@ -40,6 +41,7 @@ import {
   type ViewMode,
 } from "../shared/view-options";
 import { useThreadDirectory } from "./use-thread-directory";
+import { useThreadWorkflow } from "./use-thread-workflow";
 import { usePersistedViewOptions } from "./use-view-options";
 
 const CLOCK_INTERVAL_MS = 30_000;
@@ -47,8 +49,7 @@ const CLOCK_INTERVAL_MS = 30_000;
 const LIST_LANE_PRIORITY: Record<LaneId, number> = {
   attention: 0,
   running: 1,
-  idle: 2,
-  stale: 3,
+  paused: 2,
 };
 
 interface ThreadBoardViewProps extends PluginSurfaceProps {
@@ -58,6 +59,13 @@ interface ThreadBoardViewProps extends PluginSurfaceProps {
   refreshing: boolean;
   onRefresh(): void;
   onArchive(threadId: string): Promise<void>;
+  onPause?(threads: readonly BoardThread[]): void;
+  onObserveThreads?(threads: readonly BoardThread[]): void;
+  workflowReady?: boolean;
+  workflowSaving?: boolean;
+  workflowError?: string | null;
+  workflowErrorKind?: "load" | "save" | null;
+  onReloadWorkflow?(): void;
   viewOptions?: ThreadBoardViewOptions;
   viewOptionsReady?: boolean;
   viewOptionsSaving?: boolean;
@@ -85,7 +93,12 @@ function threadStatusColor(
   theme: PluginSurfaceProps["theme"],
 ): string {
   const lane = laneOf(thread, now);
-  if (lane !== "stale" && (thread.status === "error" || thread.attentionReason === "error")) {
+  if (
+    lane === "attention" &&
+    (thread.status === "error" ||
+      thread.attentionReason === "error" ||
+      thread.workflowAttentionReason === "error")
+  ) {
     return theme.colors.statusDanger;
   }
   return laneColor(lane, theme);
@@ -105,11 +118,13 @@ function modelLabel(thread: BoardThread): string {
 export function ThreadBoardSurface(props: PluginSurfaceProps) {
   const paseo = usePaseo();
   const directory = useThreadDirectory(paseo, props.host.id);
+  const workflow = useThreadWorkflow(directory.threads);
   const viewOptions = usePersistedViewOptions();
   return (
     <ThreadBoardView
       {...props}
       {...directory}
+      threads={workflow.threads}
       onRefresh={directory.refresh}
       onArchive={async (threadId) => {
         await paseo.agents.ref(threadId).archive();
@@ -121,6 +136,13 @@ export function ThreadBoardSurface(props: PluginSurfaceProps) {
       viewOptionsErrorKind={viewOptions.errorKind}
       onViewOptionsChange={viewOptions.update}
       onReloadViewOptions={() => void viewOptions.reload()}
+      onPause={workflow.pause}
+      onObserveThreads={workflow.observe}
+      workflowReady={workflow.ready}
+      workflowSaving={workflow.saving}
+      workflowError={workflow.error}
+      workflowErrorKind={workflow.errorKind}
+      onReloadWorkflow={() => void workflow.reload()}
     />
   );
 }
@@ -136,6 +158,13 @@ export function ThreadBoardView({
   refreshing,
   onRefresh,
   onArchive,
+  onPause,
+  onObserveThreads,
+  workflowReady = true,
+  workflowSaving = false,
+  workflowError = null,
+  workflowErrorKind = null,
+  onReloadWorkflow,
   viewOptions: controlledViewOptions,
   viewOptionsReady = true,
   viewOptionsSaving = false,
@@ -160,6 +189,7 @@ export function ThreadBoardView({
   );
   const [archiveError, setArchiveError] = useState<string | null>(null);
   const [archiveNotice, setArchiveNotice] = useState<string | null>(null);
+  const [workflowNotice, setWorkflowNotice] = useState<string | null>(null);
 
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), CLOCK_INTERVAL_MS);
@@ -310,6 +340,14 @@ export function ThreadBoardView({
         flexDirection: "row" as const,
         alignItems: "center" as const,
         gap: 10,
+      },
+      workflowErrorRow: {
+        flexDirection: "row" as const,
+        alignItems: "center" as const,
+        gap: 10,
+        paddingHorizontal: gutter,
+        paddingVertical: 10,
+        backgroundColor: colors.surface1,
       },
       retryViewOptions: {
         minHeight: controlHeight,
@@ -500,6 +538,20 @@ export function ThreadBoardView({
       cardTop: { flexDirection: "row" as const, alignItems: "center" as const, gap: 7 },
       statusDot: { width: 7, height: 7, borderRadius: 4 },
       statusLabel: { flex: 1, fontSize: 11, fontWeight: "600" as const },
+      staleBadge: {
+        minHeight: 20,
+        paddingHorizontal: 7,
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: colors.border,
+        alignItems: "center" as const,
+        justifyContent: "center" as const,
+      },
+      staleBadgeText: {
+        color: colors.foregroundMuted,
+        fontSize: 10,
+        fontWeight: "600" as const,
+      },
       age: {
         color: colors.foregroundMuted,
         fontSize: 11,
@@ -561,6 +613,12 @@ export function ThreadBoardView({
         justifyContent: "center" as const,
         gap: 6,
       },
+      pauseButton: { borderColor: colors.statusWarning },
+      pauseButtonText: {
+        color: colors.statusWarning,
+        fontSize: 12,
+        fontWeight: "600" as const,
+      },
       archiveButtonDanger: { borderColor: colors.statusDanger, backgroundColor: colors.surface2 },
       archiveButtonText: {
         color: colors.foregroundMuted,
@@ -597,13 +655,12 @@ export function ThreadBoardView({
     const result: Record<LaneId, BoardItem[]> = {
       attention: [],
       running: [],
-      idle: [],
-      stale: [],
+      paused: [],
     };
     for (const item of items) result[item.lane].push(item);
     return result;
   }, [items]);
-  const shownLanes = showStale ? LANES : LANES.filter((lane) => lane !== "stale");
+  const shownLanes = LANES;
   const normalizedQuery = listQuery.trim().toLocaleLowerCase();
   const listSections = useMemo(() => {
     const matchesQuery = (item: BoardItem) => {
@@ -617,6 +674,7 @@ export function ThreadBoardView({
         thread.provider,
         thread.model,
         LANE_TITLES[item.lane],
+        isStale(thread, now) ? "Stale" : null,
         group?.title,
       ]
         .filter(Boolean)
@@ -658,7 +716,7 @@ export function ThreadBoardView({
       }
     }
     return sections;
-  }, [items, listLane, normalizedQuery]);
+  }, [items, listLane, normalizedQuery, now]);
   const listResultCount = listSections.reduce(
     (total, section) => total + (section.root.kind === "group" ? section.children.length : 1),
     0,
@@ -678,17 +736,16 @@ export function ThreadBoardView({
       all: destinations.length,
       attention: destinations.filter((item) => item.lane === "attention").length,
       running: destinations.filter((item) => item.lane === "running").length,
-      idle: destinations.filter((item) => item.lane === "idle").length,
-      stale: destinations.filter((item) => item.lane === "stale").length,
+      paused: destinations.filter((item) => item.lane === "paused").length,
     };
   }, [items]);
   const childTotal = availableThreads.filter((thread) => thread.parentAgentId !== null).length;
-  const staleTotal = eligibleThreads.filter((thread) => laneOf(thread, now) === "stale").length;
-  const activeTotal = threadGroups.filter((group) => group.lane !== "stale").length;
+  const staleTotal = eligibleThreads.filter(
+    (thread) => isStale(thread, now) && laneOf(thread, now) === "paused",
+  ).length;
+  const visibleThreadTotal = items.filter((item) => item.kind !== "tab").length;
 
   const toggleStale = () => {
-    if (showStale && compactLane === "stale") setCompactLane("attention");
-    if (showStale && listLane === "stale") setListLane("all");
     if (showStale) setConfirmingArchiveId(null);
     changeViewOptions({ showStale: !showStale });
   };
@@ -772,6 +829,7 @@ export function ThreadBoardView({
   const renderCard = (item: BoardItem) => {
     const { thread, lane, group, kind } = item;
     const statusColor = threadStatusColor(thread, now, theme);
+    const stale = isStale(thread, now);
     const children =
       kind === "group" && group
         ? group.tabs.reduce((total, tab) => total + (childCounts.get(tab.id) ?? 0), 0)
@@ -789,7 +847,7 @@ export function ThreadBoardView({
         : kind === "tab" && group
           ? `tab of ${group.title}`
           : null;
-    const accessibleDescription = `${title}, ${relationshipLabel ? `${relationshipLabel}, ` : ""}${stateLabel(thread, now)}, ${placementLabel}, ${modelLabel(thread)}, ${activityLabel}${childLabel}`;
+    const accessibleDescription = `${title}, ${relationshipLabel ? `${relationshipLabel}, ` : ""}${stateLabel(thread, now)}${stale ? ", Stale" : ""}, ${placementLabel}, ${modelLabel(thread)}, ${activityLabel}${childLabel}`;
     const content = (
       <>
         <View style={styles.cardTop}>
@@ -797,6 +855,11 @@ export function ThreadBoardView({
           <Text style={[styles.statusLabel, { color: statusColor }]}>
             {stateLabel(thread, now)}
           </Text>
+          {stale ? (
+            <View style={styles.staleBadge}>
+              <Text style={styles.staleBadgeText}>Stale</Text>
+            </View>
+          ) : null}
           <Text style={styles.age}>{age}</Text>
         </View>
         <Text style={styles.cardTitle} numberOfLines={2} ellipsizeMode="tail">
@@ -839,6 +902,18 @@ export function ThreadBoardView({
     const confirmingArchive = confirmingArchiveId === thread.id;
     const archiving = archivingId === thread.id;
     const archiveBlocked = archivingId !== null;
+    const pauseTargets = kind === "group" && group ? group.tabs : [thread];
+    const pauseEligible =
+      lane === "attention" &&
+      pauseTargets.every(
+        (target) =>
+          target.status !== "running" &&
+          target.status !== "initializing" &&
+          target.pendingPermissionCount === 0 &&
+          target.attentionReason !== "permission",
+      );
+    const showPause = Boolean(onPause && pauseEligible);
+    const showArchive = kind !== "group" && stale;
     return (
       <View
         key={item.id}
@@ -860,7 +935,10 @@ export function ThreadBoardView({
                   ? "Opens this tab in Paseo"
                   : "Opens this thread in Paseo"
             }
-            onPress={() => navigation.openAgent({ agentId: thread.id })}
+            onPress={() => {
+              onObserveThreads?.(pauseTargets);
+              navigation.openAgent({ agentId: thread.id });
+            }}
             style={({ pressed }) => [styles.cardOpen, pressed && styles.cardPressed]}
           >
             {content}
@@ -868,9 +946,9 @@ export function ThreadBoardView({
         ) : (
           <View style={styles.cardOpen}>{content}</View>
         )}
-        {kind !== "group" && lane === "stale" ? (
+        {showPause || showArchive ? (
           <View style={styles.archiveRow} accessibilityLiveRegion="polite">
-            {confirmingArchive ? (
+            {showArchive && confirmingArchive ? (
               <>
                 <Text style={styles.archivePrompt}>Archive this thread?</Text>
                 <Pressable
@@ -907,27 +985,57 @@ export function ThreadBoardView({
                 </Pressable>
               </>
             ) : (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Archive ${thread.title}`}
-                accessibilityHint="Asks for confirmation before archiving"
-                accessibilityState={{ disabled: archiveBlocked }}
-                disabled={archiveBlocked}
-                onPress={() => {
-                  if (archiveBlocked) return;
-                  setConfirmingArchiveId(thread.id);
-                  setArchiveError(null);
-                  setArchiveNotice(null);
-                }}
-                style={({ pressed }) => [
-                  styles.archiveButton,
-                  archiveBlocked && styles.disabled,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <Icon name="Archive" size={14} color={theme.colors.foregroundMuted} />
-                <Text style={styles.archiveButtonText}>Archive</Text>
-              </Pressable>
+              <>
+                {showPause ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`${kind === "group" ? "Pause all tabs in" : "Pause"} ${title}`}
+                    accessibilityHint="Keeps this work paused until a new action occurs"
+                    accessibilityState={{ disabled: !workflowReady }}
+                    disabled={!workflowReady}
+                    onPress={() => {
+                      onPause?.(pauseTargets);
+                      setWorkflowNotice(
+                        `Paused ${title}. New activity will return it to the active board.`,
+                      );
+                    }}
+                    style={({ pressed }) => [
+                      styles.archiveButton,
+                      styles.pauseButton,
+                      !workflowReady && styles.disabled,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <Icon name="Pause" size={14} color={theme.colors.statusWarning} />
+                    <Text style={styles.pauseButtonText}>
+                      {kind === "group" ? "Pause all" : "Pause"}
+                    </Text>
+                  </Pressable>
+                ) : null}
+                {showArchive ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Archive ${thread.title}`}
+                    accessibilityHint="Asks for confirmation before archiving"
+                    accessibilityState={{ disabled: archiveBlocked }}
+                    disabled={archiveBlocked}
+                    onPress={() => {
+                      if (archiveBlocked) return;
+                      setConfirmingArchiveId(thread.id);
+                      setArchiveError(null);
+                      setArchiveNotice(null);
+                    }}
+                    style={({ pressed }) => [
+                      styles.archiveButton,
+                      archiveBlocked && styles.disabled,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <Icon name="Archive" size={14} color={theme.colors.foregroundMuted} />
+                    <Text style={styles.archiveButtonText}>Archive</Text>
+                  </Pressable>
+                ) : null}
+              </>
             )}
           </View>
         ) : null}
@@ -988,7 +1096,7 @@ export function ThreadBoardView({
               Thread Board
             </Text>
             <Text style={styles.summary} numberOfLines={1} ellipsizeMode="tail">
-              {activeTotal} active {activeTotal === 1 ? "thread" : "threads"} on {host.label}
+              {visibleThreadTotal} {visibleThreadTotal === 1 ? "thread" : "threads"} on {host.label}
             </Text>
           </View>
           <View style={styles.headingActions}>
@@ -1083,6 +1191,25 @@ export function ThreadBoardView({
         </Text>
       ) : null}
 
+      {workflowError ? (
+        <View style={styles.workflowErrorRow}>
+          <Text accessibilityRole="alert" style={styles.viewOptionsError}>
+            Board state could not be {workflowErrorKind === "load" ? "loaded" : "saved"}.{" "}
+            {workflowError}
+          </Text>
+          {workflowErrorKind === "load" && onReloadWorkflow ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Retry loading board state"
+              onPress={onReloadWorkflow}
+              style={({ pressed }) => [styles.retryViewOptions, pressed && styles.pressed]}
+            >
+              <Text style={styles.retryViewOptionsText}>Retry</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
+
       {archiveError ? (
         <Text accessibilityRole="alert" style={styles.error}>
           {archiveError}
@@ -1092,6 +1219,13 @@ export function ThreadBoardView({
       {archiveNotice ? (
         <Text accessibilityLiveRegion="polite" style={styles.notice}>
           {archiveNotice}
+        </Text>
+      ) : null}
+
+      {workflowNotice ? (
+        <Text accessibilityLiveRegion="polite" style={styles.notice}>
+          {workflowSaving ? "Saving pause… " : ""}
+          {workflowNotice}
         </Text>
       ) : null}
 

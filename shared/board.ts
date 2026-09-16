@@ -2,16 +2,18 @@ export const PARENT_AGENT_ID_LABEL = "paseo.parent-agent-id";
 
 export const STALE_AFTER_MS = 7 * 24 * 60 * 60 * 1_000;
 
-export type LaneId = "attention" | "running" | "idle" | "stale";
+export type LaneId = "attention" | "running" | "paused";
 
-export const LANES: readonly LaneId[] = ["attention", "running", "idle", "stale"];
+export const LANES: readonly LaneId[] = ["attention", "running", "paused"];
 
 export const LANE_TITLES: Record<LaneId, string> = {
   attention: "Needs You",
   running: "Running",
-  idle: "Idle",
-  stale: "Stale",
+  paused: "Paused",
 };
+
+export type WorkflowState = "attention" | "paused" | null;
+export type WorkflowAttentionReason = "finished" | "error" | null;
 
 export interface BoardThread {
   id: string;
@@ -19,6 +21,7 @@ export interface BoardThread {
   status: "initializing" | "idle" | "running" | "error" | "closed";
   requiresAttention: boolean;
   attentionReason: "finished" | "error" | "permission" | null;
+  attentionTimestamp: string | null;
   pendingPermissionCount: number;
   parentAgentId: string | null;
   workspaceId: string | null;
@@ -29,6 +32,8 @@ export interface BoardThread {
   createdAt: string;
   updatedAt: string;
   lastMessageAt: string;
+  workflowState: WorkflowState;
+  workflowAttentionReason: WorkflowAttentionReason;
 }
 
 export interface BoardThreadGroup {
@@ -53,28 +58,39 @@ export function isStale(thread: BoardThread, now = Date.now()): boolean {
 }
 
 export function laneOf(thread: BoardThread, now = Date.now()): LaneId {
-  if (isStale(thread, now)) return "stale";
+  void now;
+  if (thread.workflowState === "paused") return "paused";
   if (thread.requiresAttention || thread.status === "error" || thread.pendingPermissionCount > 0) {
     return "attention";
   }
+  if (thread.workflowState === "attention") return "attention";
   if (thread.status === "running" || thread.status === "initializing") return "running";
-  return "idle";
+  return "paused";
 }
 
 export function stateLabel(thread: BoardThread, now = Date.now()): string {
-  if (isStale(thread, now)) return "Stale";
+  void now;
+  if (thread.workflowState === "paused") return "Paused";
   if (thread.pendingPermissionCount > 0) {
     return thread.pendingPermissionCount === 1
       ? "Permission requested"
       : `${thread.pendingPermissionCount} permissions requested`;
   }
-  if (thread.status === "error" || thread.attentionReason === "error") return "Error";
-  if (thread.attentionReason === "finished") return "Finished";
+  if (
+    thread.status === "error" ||
+    thread.attentionReason === "error" ||
+    thread.workflowAttentionReason === "error"
+  ) {
+    return "Error";
+  }
+  if (thread.attentionReason === "finished" || thread.workflowAttentionReason === "finished") {
+    return "Finished";
+  }
   if (thread.attentionReason === "permission") return "Permission requested";
   if (thread.status === "initializing") return "Starting";
   if (thread.status === "running") return "Running";
   if (thread.status === "closed") return "Stopped";
-  return "Idle";
+  return "Paused";
 }
 
 export function countChildren(threads: readonly BoardThread[]): ReadonlyMap<string, number> {
@@ -89,8 +105,7 @@ export function countChildren(threads: readonly BoardThread[]): ReadonlyMap<stri
 const LANE_PRIORITY: Record<LaneId, number> = {
   attention: 0,
   running: 1,
-  idle: 2,
-  stale: 3,
+  paused: 2,
 };
 
 function timeValue(iso: string): number {
@@ -153,13 +168,17 @@ export function boardItems(
     if (group.tabs.length === 1) {
       const thread = group.tabs[0];
       const lane = laneOf(thread, options.now);
-      if (options.showStale || lane !== "stale") {
+      if (options.showStale || lane !== "paused" || !isStale(thread, options.now)) {
         items.push({ id: `thread:${thread.id}`, kind: "thread", lane, thread, group: null });
       }
       continue;
     }
 
-    if (options.showStale || group.lane !== "stale") {
+    if (
+      options.showStale ||
+      group.lane !== "paused" ||
+      group.tabs.some((tab) => !isStale(tab, options.now))
+    ) {
       items.push({
         id: `group:${group.id}`,
         kind: "group",
@@ -170,7 +189,7 @@ export function boardItems(
     }
     for (const tab of group.tabs) {
       const lane = laneOf(tab, options.now);
-      if (options.showStale || lane !== "stale") {
+      if (options.showStale || lane !== "paused" || !isStale(tab, options.now)) {
         items.push({ id: `tab:${tab.id}`, kind: "tab", lane, thread: tab, group });
       }
     }
@@ -184,7 +203,12 @@ export function visibleThreads(
 ): BoardThread[] {
   return threads
     .filter((thread) => options.includeSubagents || thread.parentAgentId === null)
-    .filter((thread) => options.showStale || laneOf(thread, options.now) !== "stale")
+    .filter(
+      (thread) =>
+        options.showStale ||
+        laneOf(thread, options.now) !== "paused" ||
+        !isStale(thread, options.now),
+    )
     .sort((left, right) => {
       return compareActivity(left, right);
     });

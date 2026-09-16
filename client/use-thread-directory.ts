@@ -45,6 +45,7 @@ export function toBoardThread(
     status: agent.status,
     requiresAttention: agent.requiresAttention ?? false,
     attentionReason: agent.attentionReason ?? null,
+    attentionTimestamp: agent.attentionTimestamp ?? null,
     pendingPermissionCount: agent.pendingPermissions.length,
     parentAgentId: parentAgentId(agent),
     workspaceId: agent.workspaceId ?? existing?.workspaceId ?? null,
@@ -55,6 +56,8 @@ export function toBoardThread(
     createdAt: agent.createdAt,
     updatedAt: agent.updatedAt,
     lastMessageAt: agent.lastUserMessageAt ?? agent.createdAt,
+    workflowState: null,
+    workflowAttentionReason: null,
   };
 }
 

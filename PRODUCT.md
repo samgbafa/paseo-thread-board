@@ -12,13 +12,13 @@ Paseo users who run several coding-agent threads at once and need to see where t
 
 ## Product Purpose
 
-Thread Board provides a host-wide operational view of Paseo threads. Success means a user can open one surface, identify work that needs attention, see what is running or idle, and jump directly to the relevant thread.
+Thread Board provides a host-wide operational view of Paseo threads. Success means a user can open one surface, identify work that needs attention, see what is running or intentionally paused, and jump directly to the relevant thread.
 
 ## Positioning
 
 Unlike a task tracker, Thread Board projects live Paseo agent state directly into Kanban and list
-views. It does not create a second workflow state or require users to keep cards synchronized with
-their threads.
+views. It adds only one manual workflow decision—Pause—and automatically invalidates that decision
+when new thread activity arrives.
 
 ## Operating Context
 
@@ -28,18 +28,23 @@ The plugin runs inside Paseo and reads the host's agent, workspace, and project 
 
 - A Paseo workspace appears as a parent when it has multiple top-level agent tabs. Each tab remains
   visible as a child item in its own live-state lane; subagents stay separate from the tab count.
-- The lanes are Needs You, Running, Idle, and Stale.
+- The lanes are Needs You, Running, and Paused. Finished and failed turns remain in Needs You until
+  the user sends a follow-up or explicitly pauses them. Viewing a thread never addresses it.
+- Pause is manual for attention-demanding work. A later prompt, run, completion, error, or
+  permission request automatically releases it.
 - A thread is stale when no user message has been sent for seven days. Viewing a thread does not
-  affect this clock. Stale is hidden by default.
+  affect this clock. Stale is an age attribute rather than a lane: unresolved stale work remains
+  visible in Needs You, while paused stale work is hidden by default.
 - Top-level threads are shown by default. Users can include subagents; top-level cards show their subagent count.
 - Users can switch between Kanban and a searchable, state-filterable list. The list keeps each
   multi-tab parent adjacent to its matching child tabs and preserves the parent as context when a
-  filter matches only a child. View mode, Show subagents, and Show stale are persisted as
-  host-backed plugin settings; search text and state filters are transient.
+  filter matches only a child. View mode, Show subagents, Show stale, sticky attention, and Pause
+  records are persisted as host-backed plugin settings; search text and state filters are transient.
 - Selecting a thread parent opens its most urgent tab; selecting a child opens that exact Paseo tab.
   Stale tab cards can also be archived after confirmation.
 - Archived means closed for this board: archived threads leave the board and remain available through Paseo's archive/history surfaces.
-- Lane placement is derived from Paseo state. There is no drag-and-drop and no independent task database.
+- Lane placement combines Paseo runtime state with the persisted attention/Pause record. There is
+  no drag-and-drop or general-purpose task database.
 - The client must update from Paseo's live subscriptions and work on compact and wide layouts.
 - The plugin targets the Paseo 0.8 plugin API.
 
@@ -53,7 +58,7 @@ Paseo agent snapshots expose status, attention reason, workspace, project, provi
 
 ## Product Principles
 
-- Reflect live thread truth rather than inventing parallel workflow state.
+- Keep the manual workflow layer limited to acknowledging work with Pause.
 - Put attention-demanding work first.
 - Roll a multi-tab thread up to its most urgent tab without flattening the individual tab states.
 - Keep active work legible when many subagents are running.

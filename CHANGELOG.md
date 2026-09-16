@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.0 — 2026-09-16
+
+- Replace Idle with an explicit Paused workflow state.
+- Keep finished and failed work in Needs You after opening or viewing its Paseo thread.
+- Add Pause actions for individual threads, tabs, and eligible multi-tab parents.
+- Automatically release Pause when a new prompt, run, completion, error, or permission request
+  arrives.
+- Treat Stale as an age badge and visibility filter so unresolved old work remains in Needs You.
+- Persist attention acknowledgements and pauses in host-backed plugin settings.
+
 ## 0.5.0 — 2026-09-16
 
 - Keep multi-tab thread parents and their matching child tabs together in List view.

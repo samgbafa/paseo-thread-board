@@ -1,13 +1,20 @@
 import { describe, expect, it, vi } from "vitest";
 import contribute from "./index.server";
 import { threadBoardViewOptions } from "./shared/view-options";
+import { threadBoardWorkflow } from "./shared/workflow";
 
 describe("Thread Board server contribution", () => {
-  it("registers the host-backed view options document", () => {
+  it("registers host-backed view options and workflow documents", () => {
     const registerSettings = vi.fn();
-    const cleanup = contribute({ registerSettings } as never);
+    const removeHook = vi.fn();
+    const on = vi.fn(() => removeHook);
+    const handle = vi.fn();
+    const cleanup = contribute({ registerSettings, on, handle } as never);
 
-    expect(registerSettings).toHaveBeenCalledWith(threadBoardViewOptions);
-    expect(cleanup()).toBeUndefined();
+    expect(registerSettings.mock.calls).toEqual([[threadBoardViewOptions], [threadBoardWorkflow]]);
+    expect(on).toHaveBeenCalledTimes(3);
+    expect(handle).toHaveBeenCalledTimes(2);
+    cleanup();
+    expect(removeHook).toHaveBeenCalledTimes(3);
   });
 });

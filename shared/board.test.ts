@@ -20,6 +20,7 @@ function thread(overrides: Partial<BoardThread> = {}): BoardThread {
     status: "idle",
     requiresAttention: false,
     attentionReason: null,
+    attentionTimestamp: null,
     pendingPermissionCount: 0,
     parentAgentId: null,
     workspaceId: null,
@@ -30,6 +31,8 @@ function thread(overrides: Partial<BoardThread> = {}): BoardThread {
     createdAt: "2026-09-14T10:00:00.000Z",
     updatedAt: "2026-09-14T11:00:00.000Z",
     lastMessageAt: "2026-09-14T11:00:00.000Z",
+    workflowState: null,
+    workflowAttentionReason: null,
     ...overrides,
   };
 }
@@ -43,21 +46,21 @@ describe("laneOf", () => {
     );
   });
 
-  it("maps fresh runtime states to their lanes", () => {
+  it("maps fresh runtime states to Running or Paused", () => {
     expect(laneOf(thread({ status: "initializing" }), NOW)).toBe("running");
     expect(laneOf(thread({ status: "running" }), NOW)).toBe("running");
-    expect(laneOf(thread({ status: "idle" }), NOW)).toBe("idle");
-    expect(laneOf(thread({ status: "closed" }), NOW)).toBe("idle");
+    expect(laneOf(thread({ status: "idle" }), NOW)).toBe("paused");
+    expect(laneOf(thread({ status: "closed" }), NOW)).toBe("paused");
   });
 
-  it("puts every thread without an update for seven days in Stale", () => {
+  it("keeps staleness as an age attribute instead of replacing workflow state", () => {
     const stale = thread({
       status: "running",
       requiresAttention: true,
       lastMessageAt: "2026-09-07T12:00:00.000Z",
     });
     expect(isStale(stale, NOW)).toBe(true);
-    expect(laneOf(stale, NOW)).toBe("stale");
+    expect(laneOf(stale, NOW)).toBe("attention");
     expect(
       isStale(
         thread({ lastMessageAt: new Date(NOW - 7 * 24 * 60 * 60 * 1_000 + 1).toISOString() }),
@@ -130,13 +133,28 @@ describe("thread grouping", () => {
     expect(visible.map(({ kind, lane, thread }) => [kind, lane, thread.id])).toEqual([
       ["group", "attention", "urgent-tab"],
       ["tab", "attention", "urgent-tab"],
-      ["tab", "idle", "original-tab"],
+      ["tab", "paused", "original-tab"],
     ]);
     expect(boardItems(groups, { showStale: true, now: NOW }).at(-1)).toMatchObject({
       kind: "tab",
-      lane: "stale",
+      lane: "paused",
       thread: { id: "stale-tab" },
     });
+  });
+
+  it("keeps an unresolved stale result visible in Needs You", () => {
+    const unresolved = thread({
+      requiresAttention: false,
+      attentionReason: null,
+      attentionTimestamp: null,
+      workflowState: "attention",
+      workflowAttentionReason: "finished",
+      lastMessageAt: "2026-09-01T10:00:00.000Z",
+    });
+
+    expect(
+      boardItems(groupThreads([unresolved], NOW), { showStale: false, now: NOW }),
+    ).toMatchObject([{ lane: "attention", thread: { id: unresolved.id } }]);
   });
 
   it("does not manufacture a parent for tabs without a shared workspace identity", () => {
