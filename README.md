@@ -23,8 +23,9 @@ activity drives the board, with one deliberate workflow action for setting revie
   filters in one action.
 - Keeps **Show subagents** and **Show stale** in a compact **View options** menu.
 - Adds **Rename board with Luna** to generate concise names for every active top-level thread, tab,
-  and grouped parent. You review the complete set before applying it, and can restore the original
-  names at any time.
+  and grouped parent. Generation continues in the background without blocking Thread Board or
+  Paseo; an explicit **Review** action appears when the complete set is ready. You can restore the
+  original names at any time.
 - Opens card actions with right-click on desktop or long-press on touch. **Pause** lives in this
   menu for eligible Needs You work; stale threads also offer the same protected Archive flow.
 - Persists view options, sticky attention, manual pauses, and Luna-generated board names in Paseo's

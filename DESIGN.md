@@ -21,10 +21,11 @@ the ceremony of a second task tracker.
 - Give completed and failed cards a contextual Pause action. Right-click opens the action panel on
   desktop and long-press opens the same panel on touch. Opening the card never changes its board
   state; Pause is the explicit acknowledgement.
-- Treat Luna naming as a protected bulk task: a host-owned modal explains the board-local boundary,
-  reports exactly how many tabs and grouped parents will be named, previews every old-to-new pair,
-  and applies only the complete validated set. Restore originals remains available whenever saved
-  aliases exist.
+- Treat Luna naming as a protected, non-blocking bulk task. A host-owned modal explains the
+  board-local boundary and reports exactly how many tabs and grouped parents will be named, then
+  closes as soon as generation starts. Inline board status reports progress, readiness, or failure;
+  Review opens only when requested and previews every old-to-new pair before applying the complete
+  validated set. Restore originals remains available whenever saved aliases exist.
 
 ## Responsive behavior
 
@@ -70,6 +71,7 @@ the ceremony of a second task tracker.
 - Do require confirmation before archiving an individual stale thread.
 - Do keep generated names visually identical to ordinary names; their meaning matters more than an
   always-on AI badge.
+- Don't keep a modal open while Luna works or automatically interrupt the user when results arrive.
 - Don't offer Archive on a virtual roll-up parent.
 - Don't add an Archived lane, destructive bulk actions, drag-and-drop, arbitrary editable states, a
   configurable stale threshold, analytics, or external persistence to this surface.

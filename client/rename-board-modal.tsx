@@ -10,12 +10,13 @@ interface RenameBoardModalProps {
   open: boolean;
   onOpenChange(open: boolean): void;
   targets: readonly BoardNameTarget[];
+  suggestions: readonly BoardNameSuggestion[] | null;
   ready: boolean;
   saving: boolean;
   savedNameCount: number;
   loadError: string | null;
   onReload(): void;
-  onGenerate(): Promise<readonly BoardNameSuggestion[]>;
+  onGenerate(): void;
   onApply(suggestions: readonly BoardNameSuggestion[]): Promise<void>;
   onRestore(): Promise<void>;
   onApplied(count: number): void;
@@ -28,6 +29,7 @@ export function RenameBoardModal({
   open,
   onOpenChange,
   targets,
+  suggestions,
   ready,
   saving,
   savedNameCount,
@@ -39,15 +41,12 @@ export function RenameBoardModal({
   onApplied,
   onRestored,
 }: RenameBoardModalProps) {
-  const [suggestions, setSuggestions] = useState<readonly BoardNameSuggestion[] | null>(null);
-  const [generating, setGenerating] = useState(false);
   const [applying, setApplying] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
-    setSuggestions(null);
     setActionError(null);
   }, [open]);
 
@@ -70,13 +69,6 @@ export function RenameBoardModal({
         padding: 12,
       },
       boundaryCopy: { flex: 1, color: colors.foregroundMuted, fontSize: 12, lineHeight: 17 },
-      progress: {
-        minHeight: 72,
-        alignItems: "center" as const,
-        justifyContent: "center" as const,
-        gap: 10,
-      },
-      progressText: { color: colors.foregroundMuted, fontSize: 13, textAlign: "center" as const },
       preview: { gap: 10 },
       previewHeading: { color: colors.foreground, fontSize: 14, fontWeight: "700" as const },
       previewCopy: { color: colors.foregroundMuted, fontSize: 12, lineHeight: 17 },
@@ -144,19 +136,12 @@ export function RenameBoardModal({
   );
   const workspaceCount = targets.filter((target) => target.kind === "workspace").length;
   const threadCount = targets.length - workspaceCount;
-  const busy = generating || applying || restoring || saving;
+  const busy = applying || restoring || saving;
 
-  const generate = async () => {
+  const generate = () => {
     if (busy || !ready || targets.length === 0) return;
-    setGenerating(true);
     setActionError(null);
-    try {
-      setSuggestions(await onGenerate());
-    } catch (cause) {
-      setActionError(cause instanceof Error ? cause.message : "Luna could not name this board.");
-    } finally {
-      setGenerating(false);
-    }
+    onGenerate();
   };
 
   const apply = async () => {
@@ -222,25 +207,14 @@ export function RenameBoardModal({
               ))}
             </View>
           </View>
-        ) : generating ? (
-          <View accessibilityLiveRegion="polite" style={styles.progress}>
-            <ActivityIndicator size="small" color={theme.colors.accent} />
-            <Text style={styles.progressText}>
-              Luna is naming {threadCount}{" "}
-              {threadCount === 1 ? "thread or tab" : "threads and tabs"}
-              {workspaceCount > 0
-                ? ` and ${workspaceCount} grouped ${workspaceCount === 1 ? "parent" : "parents"}`
-                : ""}
-              …
-            </Text>
-          </View>
         ) : (
           <>
             <View style={styles.intro}>
               <Text style={styles.lead}>Give every active thread a clear, scannable name.</Text>
               <Text style={styles.copy}>
                 Luna uses the titles, project context, and sibling tabs already visible to Thread
-                Board. You will review every suggestion before applying it.
+                Board. Generation continues in the background, so you can keep using Thread Board
+                and Paseo while Luna works.
               </Text>
             </View>
             <View style={styles.boundary}>
@@ -311,10 +285,7 @@ export function RenameBoardModal({
                 accessibilityRole="button"
                 accessibilityLabel="Generate another set of board names"
                 disabled={busy}
-                onPress={() => {
-                  setSuggestions(null);
-                  void generate();
-                }}
+                onPress={generate}
                 style={({ pressed }) => [
                   styles.action,
                   busy && styles.disabled,
@@ -350,11 +321,10 @@ export function RenameBoardModal({
               accessibilityRole="button"
               accessibilityLabel="Generate board names with Luna"
               accessibilityState={{
-                busy: generating,
                 disabled: busy || !ready || targets.length === 0,
               }}
               disabled={busy || !ready || targets.length === 0}
-              onPress={() => void generate()}
+              onPress={generate}
               style={({ pressed }) => [
                 styles.action,
                 styles.primaryAction,
@@ -362,11 +332,7 @@ export function RenameBoardModal({
                 pressed && styles.disabled,
               ]}
             >
-              {generating ? (
-                <ActivityIndicator size="small" color={theme.colors.accentForeground} />
-              ) : (
-                <Icon name="Sparkles" size={15} color={theme.colors.accentForeground} />
-              )}
+              <Icon name="Sparkles" size={15} color={theme.colors.accentForeground} />
               <Text style={styles.primaryActionText}>Generate names</Text>
             </Pressable>
           )}
