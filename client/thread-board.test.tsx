@@ -39,9 +39,15 @@ vi.mock("@getpaseo/plugin/client", () => ({
   usePaseo: vi.fn(),
 }));
 
-vi.mock("@getpaseo/plugin/client/react-native", () => ({
-  Icon: "Icon",
-}));
+vi.mock("@getpaseo/plugin/client/react-native", async () => {
+  const { createElement } = await import("react");
+  const Modal = Object.assign(
+    ({ open, children, ...props }: { open: boolean; children: ReactNode }) =>
+      open ? createElement("Modal", props, children) : null,
+    { Content: "ModalContent" },
+  );
+  return { Icon: "Icon", Modal };
+});
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT =
   true;
@@ -276,6 +282,97 @@ describe("Thread Board happy path", () => {
     expect(() => findCard(renderer, "Review the release")).toThrow();
 
     act(() => renderer.unmount());
+  });
+
+  it("previews Luna names before applying the complete board-local set", async () => {
+    const onGenerateNames = vi.fn(async () => [
+      { key: "workspace:release", name: "Prepare reliable Paseo release" },
+      { key: "agent:root", name: "Audit release automation failures" },
+    ]);
+    const onApplyNames = vi.fn(async () => undefined);
+    let renderer: ReactTestRenderer | undefined;
+    act(() => {
+      renderer = create(
+        <ThreadBoardView
+          theme={theme}
+          layout={{ compact: false, platform: "web" }}
+          host={{ id: "host-1", label: "Studio" }}
+          threads={[thread()]}
+          status="ready"
+          error={null}
+          refreshing={false}
+          onRefresh={vi.fn()}
+          onArchive={vi.fn(async () => undefined)}
+          renameTargets={[
+            {
+              key: "workspace:release",
+              kind: "workspace",
+              entityId: "release",
+              currentName: "Release work",
+              sourceName: "Release work",
+              projectName: "Paseo",
+              workspaceName: "Release work",
+              siblingNames: ["Please inspect all release automation failures"],
+              seedAgentId: "root",
+            },
+            {
+              key: "agent:root",
+              kind: "thread",
+              entityId: "root",
+              currentName: "Please inspect all release automation failures",
+              sourceName: "Please inspect all release automation failures",
+              projectName: "Paseo",
+              workspaceName: "Release work",
+              siblingNames: [],
+              seedAgentId: "root",
+            },
+          ]}
+          onGenerateNames={onGenerateNames}
+          onApplyNames={onApplyNames}
+          onRestoreNames={vi.fn(async () => undefined)}
+        />,
+      );
+    });
+
+    act(() => {
+      renderer?.root.findByProps({ accessibilityLabel: "Rename board with Luna" }).props.onPress();
+    });
+    expect(
+      renderer?.root.findByProps({ children: "Give every active thread a clear, scannable name." }),
+    ).toBeTruthy();
+    expect(
+      renderer?.root.findByProps({
+        children:
+          "These names are saved only in Thread Board. Paseo does not yet let plugins rename existing native thread tabs.",
+      }),
+    ).toBeTruthy();
+
+    await act(async () => {
+      renderer?.root
+        .findByProps({ accessibilityLabel: "Generate board names with Luna" })
+        .props.onPress();
+      await Promise.resolve();
+    });
+    expect(onGenerateNames).toHaveBeenCalledOnce();
+    expect(
+      renderer?.root.findByProps({ children: "Audit release automation failures" }),
+    ).toBeTruthy();
+
+    await act(async () => {
+      renderer?.root.findByProps({ accessibilityLabel: "Apply 2 board names" }).props.onPress();
+      await Promise.resolve();
+    });
+    expect(onApplyNames).toHaveBeenCalledWith([
+      { key: "workspace:release", name: "Prepare reliable Paseo release" },
+      { key: "agent:root", name: "Audit release automation failures" },
+    ]);
+    expect(
+      renderer?.root.findByProps({
+        children: "Applied 2 board names. Native Paseo tab titles are unchanged.",
+      }),
+    ).toBeTruthy();
+
+    act(() => renderer?.unmount());
   });
 
   it("keeps matching tabs with their parent context and clears list filters together", () => {

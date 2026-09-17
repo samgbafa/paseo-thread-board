@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ThreadBoardView } from "../client/thread-board";
+import { DEFAULT_NAME_ALIASES } from "../shared/name-aliases";
+import { applyNameAliases, collectNameTargets, mergeNameSuggestions } from "../shared/naming";
 
 const now = new Date();
 const ago = (minutes) => new Date(now.getTime() - minutes * 60_000).toISOString();
@@ -202,6 +204,9 @@ const theme = {
 function Preview() {
   const [compact, setCompact] = useState(window.innerWidth < 720);
   const [threads, setThreads] = useState(initialThreads);
+  const [aliases, setAliases] = useState(DEFAULT_NAME_ALIASES);
+  const renameTargets = collectNameTargets(threads, aliases);
+  const namedThreads = applyNameAliases(threads, aliases);
 
   useEffect(() => {
     const update = () => setCompact(window.innerWidth < 720);
@@ -218,7 +223,7 @@ function Preview() {
         openAgent: ({ agentId }) => window.alert(`Open ${agentId}`),
         openWorkspace: () => undefined,
       }}
-      threads={threads}
+      threads={namedThreads}
       status="ready"
       error={null}
       refreshing={false}
@@ -240,6 +245,27 @@ function Preview() {
           ),
         );
       }}
+      renameTargets={renameTargets}
+      savedNameCount={
+        Object.keys(aliases.agentNames).length + Object.keys(aliases.workspaceNames).length
+      }
+      onGenerateNames={async () =>
+        renameTargets.map((target) => ({
+          key: target.key,
+          name:
+            target.kind === "workspace"
+              ? "Shape TinyCloud document synchronization"
+              : target.sourceName
+                  .replace(/^Tell me about this /i, "Explain ")
+                  .replace(/^I am curious about a /i, "Explore ")
+                  .replace(/^https:\/\//i, "Review ")
+                  .slice(0, 80),
+        }))
+      }
+      onApplyNames={async (suggestions) => {
+        setAliases((current) => mergeNameSuggestions(current, renameTargets, suggestions));
+      }}
+      onRestoreNames={async () => setAliases(DEFAULT_NAME_ALIASES)}
     />
   );
 }

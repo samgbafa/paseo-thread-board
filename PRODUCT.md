@@ -40,6 +40,11 @@ The plugin runs inside Paseo and reads the host's agent, workspace, and project 
   multi-tab parent adjacent to its matching child tabs and preserves the parent as context when a
   filter matches only a child. View mode, Show subagents, Show stale, sticky attention, and Pause
   records are persisted as host-backed plugin settings; search text and state filters are transient.
+- Users can ask a temporary `codex/gpt-5.6-luna` child agent to propose clear names for every active
+  top-level thread/tab and multi-tab workspace parent. The full set is reviewed before application,
+  persisted as host-backed Thread Board aliases, and can be restored to the original Paseo names.
+  Existing native agent-tab titles remain unchanged because the public Paseo plugin SDK does not
+  expose title updates for existing agents.
 - Selecting a thread parent opens its most urgent tab; selecting a child opens that exact Paseo tab.
   Stale tab cards can also be archived after confirmation.
 - Right-clicking a card on desktop or long-pressing it on touch opens actions for that exact parent,
@@ -69,6 +74,7 @@ Paseo agent snapshots expose status, attention reason, workspace, project, provi
 - Keep secondary card actions available from both pointer and touch input without making the board
   depend on hover.
 - Prefer a focused operational view over management controls; progressively disclose view options.
+- Make AI-assisted bulk changes previewable, reversible, and explicit about their scope.
 
 ## Accessibility & Inclusion
 
