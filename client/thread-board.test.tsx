@@ -3,6 +3,7 @@ import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
 import contribute from "../index.client";
 import type { BoardItem, BoardThread } from "../shared/board";
+import type { BoardNameSuggestion } from "../shared/naming";
 import { ThreadBoardView } from "./thread-board";
 
 vi.mock("react-native", async () => {
@@ -285,10 +286,17 @@ describe("Thread Board happy path", () => {
   });
 
   it("previews Luna names before applying the complete board-local set", async () => {
-    const onGenerateNames = vi.fn(async () => [
+    const suggestions: readonly BoardNameSuggestion[] = [
       { key: "workspace:release", name: "Prepare reliable Paseo release" },
       { key: "agent:root", name: "Audit release automation failures" },
-    ]);
+    ];
+    let finishNaming: ((suggestions: readonly BoardNameSuggestion[]) => void) | undefined;
+    const onGenerateNames = vi.fn(
+      () =>
+        new Promise<readonly BoardNameSuggestion[]>((resolve) => {
+          finishNaming = resolve;
+        }),
+    );
     const onApplyNames = vi.fn(async () => undefined);
     let renderer: ReactTestRenderer | undefined;
     act(() => {
@@ -347,13 +355,40 @@ describe("Thread Board happy path", () => {
       }),
     ).toBeTruthy();
 
-    await act(async () => {
+    act(() => {
       renderer?.root
         .findByProps({ accessibilityLabel: "Generate board names with Luna" })
         .props.onPress();
-      await Promise.resolve();
     });
     expect(onGenerateNames).toHaveBeenCalledOnce();
+    expect(
+      renderer?.root.findByProps({ children: "Luna is naming in the background" }),
+    ).toBeTruthy();
+    expect(() =>
+      renderer?.root.findByProps({ children: "Give every active thread a clear, scannable name." }),
+    ).toThrow();
+
+    act(() => {
+      renderer?.root.findByProps({ accessibilityLabel: "Open view options" }).props.onPress();
+    });
+    expect(renderer?.root.findByProps({ accessibilityLabel: "Show subagents" })).toBeTruthy();
+
+    await act(async () => {
+      finishNaming?.(suggestions);
+      await Promise.resolve();
+    });
+    expect(
+      renderer?.root.findByProps({ accessibilityLabel: "Review 2 proposed board names" }),
+    ).toBeTruthy();
+    expect(() =>
+      renderer?.root.findByProps({ children: "Audit release automation failures" }),
+    ).toThrow();
+
+    act(() => {
+      renderer?.root
+        .findByProps({ accessibilityLabel: "Review 2 proposed board names" })
+        .props.onPress();
+    });
     expect(
       renderer?.root.findByProps({ children: "Audit release automation failures" }),
     ).toBeTruthy();
@@ -362,10 +397,7 @@ describe("Thread Board happy path", () => {
       renderer?.root.findByProps({ accessibilityLabel: "Apply 2 board names" }).props.onPress();
       await Promise.resolve();
     });
-    expect(onApplyNames).toHaveBeenCalledWith([
-      { key: "workspace:release", name: "Prepare reliable Paseo release" },
-      { key: "agent:root", name: "Audit release automation failures" },
-    ]);
+    expect(onApplyNames).toHaveBeenCalledWith(suggestions);
     expect(
       renderer?.root.findByProps({
         children: "Applied 2 board names. Native Paseo tab titles are unchanged.",

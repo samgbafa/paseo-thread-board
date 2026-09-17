@@ -249,8 +249,9 @@ function Preview() {
       savedNameCount={
         Object.keys(aliases.agentNames).length + Object.keys(aliases.workspaceNames).length
       }
-      onGenerateNames={async () =>
-        renameTargets.map((target) => ({
+      onGenerateNames={async () => {
+        await new Promise((resolve) => window.setTimeout(resolve, 1200));
+        return renameTargets.map((target) => ({
           key: target.key,
           name:
             target.kind === "workspace"
@@ -260,8 +261,8 @@ function Preview() {
                   .replace(/^I am curious about a /i, "Explore ")
                   .replace(/^https:\/\//i, "Review ")
                   .slice(0, 80),
-        }))
-      }
+        }));
+      }}
       onApplyNames={async (suggestions) => {
         setAliases((current) => mergeNameSuggestions(current, renameTargets, suggestions));
       }}

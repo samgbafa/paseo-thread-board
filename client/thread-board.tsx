@@ -231,6 +231,13 @@ export function ThreadBoardView({
   const { includeSubagents, showStale, viewMode } = viewOptions;
   const [viewOptionsOpen, setViewOptionsOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
+  const [renameGenerating, setRenameGenerating] = useState(false);
+  const [renameJobTargets, setRenameJobTargets] = useState<readonly BoardNameTarget[]>([]);
+  const [renameSuggestions, setRenameSuggestions] = useState<readonly BoardNameSuggestion[] | null>(
+    null,
+  );
+  const [renameError, setRenameError] = useState<string | null>(null);
+  const renameRequestId = useRef(0);
   const [listQuery, setListQuery] = useState("");
   const [listLane, setListLane] = useState<"all" | LaneId>("all");
   const [compactLane, setCompactLane] = useState<LaneId>("attention");
@@ -445,6 +452,35 @@ export function ThreadBoardView({
         paddingHorizontal: gutter,
         paddingVertical: 10,
         fontSize: 13,
+      },
+      namingStatus: {
+        minHeight: controlHeight,
+        paddingHorizontal: gutter,
+        paddingVertical: 10,
+        flexDirection: "row" as const,
+        alignItems: "center" as const,
+        gap: 10,
+        backgroundColor: colors.surface1,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.border,
+      },
+      namingStatusBody: { flex: 1, minWidth: 0, gap: 2 },
+      namingStatusTitle: { color: colors.foreground, fontSize: 13, fontWeight: "600" as const },
+      namingStatusCopy: { color: colors.foregroundMuted, fontSize: 12, lineHeight: 17 },
+      namingStatusError: { color: colors.statusDanger, fontSize: 12, lineHeight: 17 },
+      namingStatusAction: {
+        minHeight: controlHeight,
+        paddingHorizontal: 12,
+        borderRadius: 9,
+        borderWidth: 1,
+        borderColor: colors.border,
+        alignItems: "center" as const,
+        justifyContent: "center" as const,
+      },
+      namingStatusActionText: {
+        color: colors.foreground,
+        fontSize: 12,
+        fontWeight: "600" as const,
       },
       loading: {
         flex: 1,
@@ -864,11 +900,45 @@ export function ThreadBoardView({
   const visibleThreadTotal = items.filter((item) => item.kind !== "tab").length;
   const canRename = Boolean(onGenerateNames && onApplyNames && onRestoreNames);
 
+  const startNameGeneration = () => {
+    if (!onGenerateNames || renameGenerating || !nameAliasesReady || renameTargets.length === 0) {
+      return;
+    }
+    const requestId = renameRequestId.current + 1;
+    renameRequestId.current = requestId;
+    setRenameJobTargets(renameTargets);
+    setRenameSuggestions(null);
+    setRenameError(null);
+    setNamingNotice(null);
+    setRenameGenerating(true);
+    setRenameOpen(false);
+    void onGenerateNames()
+      .then((suggestions) => {
+        if (renameRequestId.current !== requestId) return;
+        setRenameSuggestions(suggestions);
+      })
+      .catch((cause) => {
+        if (renameRequestId.current !== requestId) return;
+        setRenameError(cause instanceof Error ? cause.message : "Luna could not name this board.");
+      })
+      .finally(() => {
+        if (renameRequestId.current === requestId) setRenameGenerating(false);
+      });
+  };
+
   const renderRenameButton = (compact = false) => (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel="Rename board with Luna"
+      accessibilityLabel={
+        renameGenerating
+          ? "Luna is naming the board in the background"
+          : renameSuggestions
+            ? `Review ${renameSuggestions.length} Luna board names`
+            : "Rename board with Luna"
+      }
       accessibilityHint="Generates clear names for all active top-level threads, tabs, and grouped parents"
+      accessibilityState={{ busy: renameGenerating, disabled: renameGenerating }}
+      disabled={renameGenerating}
       onPress={() => {
         setNamingNotice(null);
         setRenameOpen(true);
@@ -876,11 +946,22 @@ export function ThreadBoardView({
       style={({ pressed }) => [
         styles.renameButton,
         compact && styles.renameButtonCompact,
+        renameGenerating && styles.disabled,
         pressed && styles.pressed,
       ]}
     >
-      <Icon name="Sparkles" size={16} color={theme.colors.accent} />
-      <Text style={styles.renameButtonText}>Rename board with Luna</Text>
+      {renameGenerating ? (
+        <ActivityIndicator size="small" color={theme.colors.accent} />
+      ) : (
+        <Icon name="Sparkles" size={16} color={theme.colors.accent} />
+      )}
+      <Text style={styles.renameButtonText}>
+        {renameGenerating
+          ? "Luna is naming…"
+          : renameSuggestions
+            ? `Review ${renameSuggestions.length} names`
+            : "Rename board with Luna"}
+      </Text>
     </Pressable>
   );
 
@@ -1399,22 +1480,83 @@ export function ThreadBoardView({
           layout={layout}
           open={renameOpen}
           onOpenChange={setRenameOpen}
-          targets={renameTargets}
+          targets={renameSuggestions ? renameJobTargets : renameTargets}
+          suggestions={renameSuggestions}
           ready={nameAliasesReady}
           saving={nameAliasesSaving}
           savedNameCount={savedNameCount}
           loadError={nameAliasesError}
           onReload={() => onReloadNameAliases?.()}
-          onGenerate={onGenerateNames}
+          onGenerate={startNameGeneration}
           onApply={onApplyNames}
           onRestore={onRestoreNames}
-          onApplied={(count) =>
+          onApplied={(count) => {
+            setRenameSuggestions(null);
+            setRenameJobTargets([]);
+            setRenameError(null);
             setNamingNotice(
               `Applied ${count} ${count === 1 ? "board name" : "board names"}. Native Paseo tab titles are unchanged.`,
-            )
-          }
-          onRestored={() => setNamingNotice("Restored original Thread Board names.")}
+            );
+          }}
+          onRestored={() => {
+            setRenameSuggestions(null);
+            setRenameJobTargets([]);
+            setRenameError(null);
+            setNamingNotice("Restored original Thread Board names.");
+          }}
         />
+      ) : null}
+
+      {renameGenerating ? (
+        <View accessibilityLiveRegion="polite" style={styles.namingStatus}>
+          <ActivityIndicator size="small" color={theme.colors.accent} />
+          <View style={styles.namingStatusBody}>
+            <Text style={styles.namingStatusTitle}>Luna is naming in the background</Text>
+            <Text style={styles.namingStatusCopy}>
+              Keep using Thread Board or anywhere else in Paseo. Review will appear here when the
+              names are ready.
+            </Text>
+          </View>
+        </View>
+      ) : renameSuggestions ? (
+        <View accessibilityLiveRegion="polite" style={styles.namingStatus}>
+          <Icon name="Sparkles" size={16} color={theme.colors.accent} />
+          <View style={styles.namingStatusBody}>
+            <Text style={styles.namingStatusTitle}>
+              {renameSuggestions.length} proposed{" "}
+              {renameSuggestions.length === 1 ? "name" : "names"} ready
+            </Text>
+            <Text style={styles.namingStatusCopy}>
+              Review the full set before anything changes.
+            </Text>
+          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Review ${renameSuggestions.length} proposed board names`}
+            onPress={() => setRenameOpen(true)}
+            style={({ pressed }) => [styles.namingStatusAction, pressed && styles.pressed]}
+          >
+            <Text style={styles.namingStatusActionText}>Review</Text>
+          </Pressable>
+        </View>
+      ) : renameError ? (
+        <View accessibilityLiveRegion="assertive" style={styles.namingStatus}>
+          <Icon name="Info" size={16} color={theme.colors.statusDanger} />
+          <View style={styles.namingStatusBody}>
+            <Text style={styles.namingStatusTitle}>Luna could not finish naming</Text>
+            <Text accessibilityRole="alert" style={styles.namingStatusError}>
+              {renameError}
+            </Text>
+          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Retry Luna board naming"
+            onPress={startNameGeneration}
+            style={({ pressed }) => [styles.namingStatusAction, pressed && styles.pressed]}
+          >
+            <Text style={styles.namingStatusActionText}>Retry</Text>
+          </Pressable>
+        </View>
       ) : null}
 
       {error ? (

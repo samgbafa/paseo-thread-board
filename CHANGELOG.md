@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.1 — 2026-09-17
+
+- Close the naming modal as soon as Luna starts so Thread Board and the rest of Paseo remain usable
+  throughout generation.
+- Show background progress, ready-to-review results, and recoverable errors in the board without
+  interrupting the user's current work.
+- Keep completed suggestions behind an explicit **Review** action instead of reopening the modal
+  automatically.
+
 ## 0.8.0 — 2026-09-17
 
 - Add **Rename board with Luna**, which proposes concise names for every active top-level thread,
