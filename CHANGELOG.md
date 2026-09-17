@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.2 — 2026-09-17
+
+- Keep Luna naming jobs and completed proposals alive when the user leaves and reopens Thread Board.
+- Preserve the original naming target set across surface navigation so reviewed proposals apply to
+  the exact threads and grouped parents Luna named.
+
 ## 0.8.1 — 2026-09-17
 
 - Close the naming modal as soon as Luna starts so Thread Board and the rest of Paseo remain usable

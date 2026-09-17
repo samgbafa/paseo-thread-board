@@ -42,10 +42,11 @@ The plugin runs inside Paseo and reads the host's agent, workspace, and project 
   records are persisted as host-backed plugin settings; search text and state filters are transient.
 - Users can ask a temporary `codex/gpt-5.6-luna` child agent to propose clear names for every active
   top-level thread/tab and multi-tab workspace parent. Generation runs in the background so the
-  board and Paseo remain usable, then exposes an explicit Review action when the full set is ready.
-  Reviewed names are persisted as host-backed Thread Board aliases and can be restored to the
-  original Paseo names. Existing native agent-tab titles remain unchanged because the public Paseo
-  plugin SDK does not expose title updates for existing agents.
+  board and Paseo remain usable. The job and its completed proposals survive leaving and reopening
+  the Thread Board surface within the Paseo client session, then expose an explicit Review action
+  when the full set is ready. Reviewed names are persisted as host-backed Thread Board aliases and
+  can be restored to the original Paseo names. Existing native agent-tab titles remain unchanged
+  because the public Paseo plugin SDK does not expose title updates for existing agents.
 - Selecting a thread parent opens its most urgent tab; selecting a child opens that exact Paseo tab.
   Stale tab cards can also be archived after confirmation.
 - Right-clicking a card on desktop or long-pressing it on touch opens actions for that exact parent,
