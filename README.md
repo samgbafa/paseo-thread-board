@@ -22,9 +22,13 @@ activity drives the board, with one deliberate workflow action for setting revie
 - Counts real thread destinations separately from virtual parents and clears search plus state
   filters in one action.
 - Keeps **Show subagents** and **Show stale** in a compact **View options** menu.
+- Adds **Rename board with Luna** to generate concise names for every active top-level thread, tab,
+  and grouped parent. You review the complete set before applying it, and can restore the original
+  names at any time.
 - Opens card actions with right-click on desktop or long-press on touch. **Pause** lives in this
   menu for eligible Needs You work; stale threads also offer the same protected Archive flow.
-- Persists view options, sticky attention, and manual pauses in Paseo's host-backed plugin settings.
+- Persists view options, sticky attention, manual pauses, and Luna-generated board names in Paseo's
+  host-backed plugin settings.
 - Shows project, workspace, provider, model, attention reason, and recent activity on each card.
 - Opens the most urgent tab when you select a thread parent, or the exact tab when you select a
   child.
@@ -40,6 +44,11 @@ available through Paseo's archive/history surfaces.
 Thread grouping uses Paseo's stable workspace identity. A workspace with one top-level tab remains
 an ordinary standalone thread. Subagents stay separate from the workspace's tab count, including
 when the **Include subagents** toggle is on.
+
+Generated names are aliases inside Thread Board. Paseo's public plugin API does not currently let a
+plugin update the native title of an existing agent tab, so the sidebar and conversation header keep
+their original titles. The naming helper runs as a temporary Luna child agent using only board title,
+project, workspace, and sibling context; it is archived after the naming run.
 
 ## Lane rules
 
@@ -71,8 +80,8 @@ paseo plugin remove thread-board
 ```
 
 Git installs run no package manager. Thread Board has no external API or analytics. Its small server
-entry point registers host-backed view and workflow settings; thread data still comes directly
-from Paseo's client API.
+entry point registers host-backed view, workflow, and name-alias settings; thread data and the Luna
+naming helper still use Paseo's public client API.
 
 ## Develop
 

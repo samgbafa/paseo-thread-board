@@ -35,11 +35,22 @@ import {
   stateLabel,
   visibleThreads,
 } from "../shared/board";
+import { DEFAULT_NAME_ALIASES } from "../shared/name-aliases";
+import {
+  applyNameAliases,
+  type BoardNameSuggestion,
+  type BoardNameTarget,
+  collectNameTargets,
+  mergeNameSuggestions,
+} from "../shared/naming";
 import {
   DEFAULT_VIEW_OPTIONS,
   type ThreadBoardViewOptions,
   type ViewMode,
 } from "../shared/view-options";
+import { generateBoardNames } from "./generate-board-names";
+import { RenameBoardModal } from "./rename-board-modal";
+import { usePersistedNameAliases } from "./use-name-aliases";
 import { useThreadDirectory } from "./use-thread-directory";
 import { useThreadWorkflow } from "./use-thread-workflow";
 import { usePersistedViewOptions } from "./use-view-options";
@@ -74,6 +85,15 @@ interface ThreadBoardViewProps extends PluginSurfaceProps {
   viewOptionsErrorKind?: "load" | "save" | null;
   onViewOptionsChange?(options: ThreadBoardViewOptions): void;
   onReloadViewOptions?(): void;
+  renameTargets?: readonly BoardNameTarget[];
+  nameAliasesReady?: boolean;
+  nameAliasesSaving?: boolean;
+  nameAliasesError?: string | null;
+  savedNameCount?: number;
+  onReloadNameAliases?(): void;
+  onGenerateNames?(): Promise<readonly BoardNameSuggestion[]>;
+  onApplyNames?(suggestions: readonly BoardNameSuggestion[]): Promise<void>;
+  onRestoreNames?(): Promise<void>;
 }
 
 interface ListSection {
@@ -121,11 +141,23 @@ export function ThreadBoardSurface(props: PluginSurfaceProps) {
   const directory = useThreadDirectory(paseo, props.host.id);
   const workflow = useThreadWorkflow(directory.threads);
   const viewOptions = usePersistedViewOptions();
+  const nameAliases = usePersistedNameAliases();
+  const renameTargets = useMemo(
+    () => collectNameTargets(workflow.threads, nameAliases.aliases),
+    [nameAliases.aliases, workflow.threads],
+  );
+  const namedThreads = useMemo(
+    () => applyNameAliases(workflow.threads, nameAliases.aliases),
+    [nameAliases.aliases, workflow.threads],
+  );
+  const savedNameCount =
+    Object.keys(nameAliases.aliases.agentNames).length +
+    Object.keys(nameAliases.aliases.workspaceNames).length;
   return (
     <ThreadBoardView
       {...props}
       {...directory}
-      threads={workflow.threads}
+      threads={namedThreads}
       onRefresh={directory.refresh}
       onArchive={async (threadId) => {
         await paseo.agents.ref(threadId).archive();
@@ -137,6 +169,17 @@ export function ThreadBoardSurface(props: PluginSurfaceProps) {
       viewOptionsErrorKind={viewOptions.errorKind}
       onViewOptionsChange={viewOptions.update}
       onReloadViewOptions={() => void viewOptions.reload()}
+      renameTargets={renameTargets}
+      nameAliasesReady={nameAliases.ready}
+      nameAliasesSaving={nameAliases.saving}
+      nameAliasesError={nameAliases.errorKind === "load" ? nameAliases.error : null}
+      savedNameCount={savedNameCount}
+      onReloadNameAliases={() => void nameAliases.reload()}
+      onGenerateNames={() => generateBoardNames(paseo, renameTargets)}
+      onApplyNames={(suggestions) =>
+        nameAliases.update(mergeNameSuggestions(nameAliases.aliases, renameTargets, suggestions))
+      }
+      onRestoreNames={() => nameAliases.update(DEFAULT_NAME_ALIASES)}
       onPause={workflow.pause}
       onObserveThreads={workflow.observe}
       workflowReady={workflow.ready}
@@ -173,11 +216,21 @@ export function ThreadBoardView({
   viewOptionsErrorKind = null,
   onViewOptionsChange,
   onReloadViewOptions,
+  renameTargets = [],
+  nameAliasesReady = true,
+  nameAliasesSaving = false,
+  nameAliasesError = null,
+  savedNameCount = 0,
+  onReloadNameAliases,
+  onGenerateNames,
+  onApplyNames,
+  onRestoreNames,
 }: ThreadBoardViewProps) {
   const [localViewOptions, setLocalViewOptions] = useState(DEFAULT_VIEW_OPTIONS);
   const viewOptions = controlledViewOptions ?? localViewOptions;
   const { includeSubagents, showStale, viewMode } = viewOptions;
   const [viewOptionsOpen, setViewOptionsOpen] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
   const [listQuery, setListQuery] = useState("");
   const [listLane, setListLane] = useState<"all" | LaneId>("all");
   const [compactLane, setCompactLane] = useState<LaneId>("attention");
@@ -192,6 +245,7 @@ export function ThreadBoardView({
   const [archiveError, setArchiveError] = useState<string | null>(null);
   const [archiveNotice, setArchiveNotice] = useState<string | null>(null);
   const [workflowNotice, setWorkflowNotice] = useState<string | null>(null);
+  const [namingNotice, setNamingNotice] = useState<string | null>(null);
 
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), CLOCK_INTERVAL_MS);
@@ -266,6 +320,19 @@ export function ThreadBoardView({
         backgroundColor: colors.surface2,
       },
       viewOptionsButtonText: { color: colors.foreground, fontSize: 13, fontWeight: "600" as const },
+      renameButton: {
+        minHeight: controlHeight,
+        paddingHorizontal: 12,
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: colors.accent,
+        flexDirection: "row" as const,
+        alignItems: "center" as const,
+        justifyContent: "center" as const,
+        gap: 7,
+      },
+      renameButtonCompact: { alignSelf: "stretch" as const },
+      renameButtonText: { color: colors.foreground, fontSize: 13, fontWeight: "600" as const },
       viewOptionsPanel: {
         borderWidth: 1,
         borderColor: colors.border,
@@ -795,6 +862,27 @@ export function ThreadBoardView({
     (thread) => isStale(thread, now) && laneOf(thread, now) === "paused",
   ).length;
   const visibleThreadTotal = items.filter((item) => item.kind !== "tab").length;
+  const canRename = Boolean(onGenerateNames && onApplyNames && onRestoreNames);
+
+  const renderRenameButton = (compact = false) => (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Rename board with Luna"
+      accessibilityHint="Generates clear names for all active top-level threads, tabs, and grouped parents"
+      onPress={() => {
+        setNamingNotice(null);
+        setRenameOpen(true);
+      }}
+      style={({ pressed }) => [
+        styles.renameButton,
+        compact && styles.renameButtonCompact,
+        pressed && styles.pressed,
+      ]}
+    >
+      <Icon name="Sparkles" size={16} color={theme.colors.accent} />
+      <Text style={styles.renameButtonText}>Rename board with Luna</Text>
+    </Pressable>
+  );
 
   const toggleStale = () => {
     if (showStale) {
@@ -1218,6 +1306,7 @@ export function ThreadBoardView({
             </Text>
           </View>
           <View style={styles.headingActions}>
+            {!layout.compact && canRename ? renderRenameButton() : null}
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={viewOptionsOpen ? "Close view options" : "Open view options"}
@@ -1254,6 +1343,7 @@ export function ThreadBoardView({
             </Pressable>
           </View>
         </View>
+        {layout.compact && canRename ? renderRenameButton(true) : null}
         {viewOptionsOpen ? (
           <View accessibilityLabel="View options" style={styles.viewOptionsPanel}>
             <View style={styles.viewOptionsSection}>
@@ -1303,6 +1393,30 @@ export function ThreadBoardView({
         ) : null}
       </View>
 
+      {canRename && onGenerateNames && onApplyNames && onRestoreNames ? (
+        <RenameBoardModal
+          theme={theme}
+          layout={layout}
+          open={renameOpen}
+          onOpenChange={setRenameOpen}
+          targets={renameTargets}
+          ready={nameAliasesReady}
+          saving={nameAliasesSaving}
+          savedNameCount={savedNameCount}
+          loadError={nameAliasesError}
+          onReload={() => onReloadNameAliases?.()}
+          onGenerate={onGenerateNames}
+          onApply={onApplyNames}
+          onRestore={onRestoreNames}
+          onApplied={(count) =>
+            setNamingNotice(
+              `Applied ${count} ${count === 1 ? "board name" : "board names"}. Native Paseo tab titles are unchanged.`,
+            )
+          }
+          onRestored={() => setNamingNotice("Restored original Thread Board names.")}
+        />
+      ) : null}
+
       {error ? (
         <Text accessibilityRole="alert" style={styles.error}>
           {error} Use Refresh to try again.
@@ -1344,6 +1458,12 @@ export function ThreadBoardView({
         <Text accessibilityLiveRegion="polite" style={styles.notice}>
           {workflowSaving ? "Saving pause… " : ""}
           {workflowNotice}
+        </Text>
+      ) : null}
+
+      {namingNotice ? (
+        <Text accessibilityLiveRegion="polite" style={styles.notice}>
+          {namingNotice}
         </Text>
       ) : null}
 

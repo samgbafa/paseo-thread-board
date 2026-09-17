@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.0 — 2026-09-17
+
+- Add **Rename board with Luna**, which proposes concise names for every active top-level thread,
+  tab, and grouped workspace parent using `codex/gpt-5.6-luna`.
+- Preview the complete rename set before applying it, preserve original names on failure, and offer
+  one-action restoration of Paseo's original titles.
+- Persist generated names as host-backed Thread Board aliases and archive the temporary Luna child
+  agent after every successful or failed run.
+- Explain in-product that aliases are board-local until Paseo exposes existing-agent title updates
+  through the public plugin SDK.
+
 ## 0.7.1 — 2026-09-16
 
 - Keep sticky attention from lightweight agent-directory updates instead of full turn-ended

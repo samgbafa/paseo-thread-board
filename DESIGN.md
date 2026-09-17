@@ -6,8 +6,10 @@ the ceremony of a second task tracker.
 ## Visual language
 
 - Inherit every color from Paseo's theme tokens. Never derive translucent colors from token strings.
-- Keep the page chrome light: one header with a single View options disclosure, then the live data.
-  The disclosure groups the Kanban/List choice with Show subagents and Show stale checkboxes.
+- Keep the page chrome light: one header with **Rename board with Luna**, a single View options
+  disclosure, and Refresh, then the live data. On compact clients the rename action gets its own
+  full-width row so the title and utility controls keep room to breathe. View options groups the
+  Kanban/List choice with Show subagents and Show stale checkboxes.
 - Use the status dot as a quick scan aid, always paired with a written state label.
 - Give a Paseo workspace with multiple top-level agent tabs one visually emphasized roll-up parent,
   regardless of differing provider persistence or session handles. Name it from `workspaceName`,
@@ -19,6 +21,10 @@ the ceremony of a second task tracker.
 - Give completed and failed cards a contextual Pause action. Right-click opens the action panel on
   desktop and long-press opens the same panel on touch. Opening the card never changes its board
   state; Pause is the explicit acknowledgement.
+- Treat Luna naming as a protected bulk task: a host-owned modal explains the board-local boundary,
+  reports exactly how many tabs and grouped parents will be named, previews every old-to-new pair,
+  and applies only the complete validated set. Restore originals remains available whenever saved
+  aliases exist.
 
 ## Responsive behavior
 
@@ -42,8 +48,8 @@ the ceremony of a second task tracker.
 ## States and accessibility
 
 - Loading, refresh, recoverable error, lane-empty, pressed, selected, pause-save,
-  archive-confirmation, and archive-progress states must remain understandable in every Paseo
-  theme.
+  archive-confirmation, archive-progress, naming-progress, naming-preview, naming-error, and
+  alias-save states must remain understandable in every Paseo theme.
 - Allow one archive transaction at a time. Disable competing Archive controls until it settles;
   semantically disabled archive controls also use unmistakably reduced opacity. Success removes the
   card immediately, while failure retains it and presents a recoverable error.
@@ -62,9 +68,11 @@ the ceremony of a second task tracker.
 - Do keep the urgency-first parent, indented `Tab of …` children in their own lanes, and distinct
   subagent language.
 - Do require confirmation before archiving an individual stale thread.
+- Do keep generated names visually identical to ordinary names; their meaning matters more than an
+  always-on AI badge.
 - Don't offer Archive on a virtual roll-up parent.
-- Don't add an Archived lane, bulk actions, drag-and-drop, arbitrary editable states, a configurable
-  stale threshold, analytics, or external persistence to this surface.
+- Don't add an Archived lane, destructive bulk actions, drag-and-drop, arbitrary editable states, a
+  configurable stale threshold, analytics, or external persistence to this surface.
 - Don't introduce a new palette or raster assets; Thread Board remains entirely within Paseo's theme
   tokens and native iconography.
 - Don't hide status behind color, motion, hover, or platform-specific gestures.
