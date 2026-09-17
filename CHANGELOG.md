@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.3 — 2026-09-17
+
+- Accept Luna's complete key-to-name JSON response in addition to the requested names-array shape,
+  preventing valid naming results from being misreported as incomplete.
+- State the required JSON envelope directly in the naming prompt for providers that do not enforce
+  the supplied output schema.
+
 ## 0.8.2 — 2026-09-17
 
 - Keep Luna naming jobs and completed proposals alive when the user leaves and reopens Thread Board.

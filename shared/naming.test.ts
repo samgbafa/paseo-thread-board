@@ -87,6 +87,13 @@ describe("Luna board naming", () => {
     expect(() => parseNameSuggestions('{"names":[]}', targets)).toThrow("Luna missed 1 item");
   });
 
+  it("accepts Luna's complete key-to-name response shape", () => {
+    const targets = collectNameTargets([thread()], DEFAULT_NAME_ALIASES);
+    expect(
+      parseNameSuggestions('{"agent:root":"Audit release automation failures"}', targets),
+    ).toEqual([{ key: "agent:root", name: "Audit release automation failures" }]);
+  });
+
   it("applies and persists agent and grouped-parent aliases independently", () => {
     const threads = [thread(), thread({ id: "notes", title: "Write the notes" })];
     const targets = collectNameTargets(threads, DEFAULT_NAME_ALIASES);
