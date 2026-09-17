@@ -142,6 +142,7 @@ export function namingPrompt(targets: readonly BoardNameTarget[]): string {
   return [
     "Rename every Thread Board item below.",
     "Return exactly one name for every key and no extra keys.",
+    'Return JSON as {"names":[{"key":"the exact input key","name":"the proposed name"}]}.',
     "Use a concise, specific, sentence-case name of 4–8 words that clearly says what is happening.",
     "Keep sibling tabs distinct. Name grouped parents for their shared outcome, not for one tab.",
     "Do not prefix names with a provider, model, project, the words thread/tab/parent, or a status.",
@@ -166,6 +167,16 @@ function cleanName(value: unknown): string | null {
   return name;
 }
 
+function nameItems(parsed: unknown): unknown[] | null {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+  const names = (parsed as { names?: unknown }).names;
+  if (Array.isArray(names)) return names;
+
+  const entries = Object.entries(parsed);
+  if (entries.some(([, name]) => typeof name !== "string")) return null;
+  return entries.map(([key, name]) => ({ key, name }));
+}
+
 export function parseNameSuggestions(
   raw: string,
   targets: readonly BoardNameTarget[],
@@ -176,17 +187,14 @@ export function parseNameSuggestions(
   } catch {
     throw new Error("Luna returned an unreadable naming response. Try again.");
   }
-  if (
-    !parsed ||
-    typeof parsed !== "object" ||
-    !Array.isArray((parsed as { names?: unknown }).names)
-  ) {
+  const items = nameItems(parsed);
+  if (!items) {
     throw new Error("Luna returned an incomplete naming response. Try again.");
   }
 
   const expected = new Set(targets.map((target) => target.key));
   const byKey = new Map<string, string>();
-  for (const item of (parsed as { names: unknown[] }).names) {
+  for (const item of items) {
     if (!item || typeof item !== "object") continue;
     const { key, name: rawName } = item as { key?: unknown; name?: unknown };
     if (typeof key !== "string" || !expected.has(key) || byKey.has(key)) continue;
