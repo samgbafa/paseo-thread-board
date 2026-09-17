@@ -1,8 +1,13 @@
-import type { PluginClientContext } from "@getpaseo/plugin/client";
+import type { PluginClientContext, PluginSurfaceProps } from "@getpaseo/plugin/client";
+import { createBoardNamingJobStore } from "./client/naming-job-store";
 import { ThreadBoardSurface } from "./client/thread-board";
 
 export default function contribute(client: PluginClientContext) {
-  const removeSurface = client.addSurface("thread-board", ThreadBoardSurface);
+  const namingJobStore = createBoardNamingJobStore();
+  const PersistentThreadBoardSurface = (props: PluginSurfaceProps) => (
+    <ThreadBoardSurface {...props} namingJobStore={namingJobStore} />
+  );
+  const removeSurface = client.addSurface("thread-board", PersistentThreadBoardSurface);
   const removeSidebarItem = client.addSidebarItem({
     id: "thread-board",
     title: "Thread Board",
@@ -21,6 +26,7 @@ export default function contribute(client: PluginClientContext) {
   });
 
   return () => {
+    namingJobStore.dispose();
     removeCommand();
     removeSidebarItem();
     removeSurface();

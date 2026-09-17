@@ -9,7 +9,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import { usePaseo } from "@getpaseo/plugin/client";
 import { Icon } from "@getpaseo/plugin/client/react-native";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -49,6 +49,7 @@ import {
   type ViewMode,
 } from "../shared/view-options";
 import { generateBoardNames } from "./generate-board-names";
+import { type BoardNamingJobStore, createBoardNamingJobStore } from "./naming-job-store";
 import { RenameBoardModal } from "./rename-board-modal";
 import { usePersistedNameAliases } from "./use-name-aliases";
 import { useThreadDirectory } from "./use-thread-directory";
@@ -92,8 +93,12 @@ interface ThreadBoardViewProps extends PluginSurfaceProps {
   savedNameCount?: number;
   onReloadNameAliases?(): void;
   onGenerateNames?(): Promise<readonly BoardNameSuggestion[]>;
-  onApplyNames?(suggestions: readonly BoardNameSuggestion[]): Promise<void>;
+  onApplyNames?(
+    suggestions: readonly BoardNameSuggestion[],
+    targets: readonly BoardNameTarget[],
+  ): Promise<void>;
   onRestoreNames?(): Promise<void>;
+  namingJobStore?: BoardNamingJobStore;
 }
 
 interface ListSection {
@@ -136,7 +141,11 @@ function modelLabel(thread: BoardThread): string {
   return thread.model ? `${thread.provider} · ${thread.model}` : thread.provider;
 }
 
-export function ThreadBoardSurface(props: PluginSurfaceProps) {
+interface ThreadBoardSurfaceProps extends PluginSurfaceProps {
+  namingJobStore?: BoardNamingJobStore;
+}
+
+export function ThreadBoardSurface(props: ThreadBoardSurfaceProps) {
   const paseo = usePaseo();
   const directory = useThreadDirectory(paseo, props.host.id);
   const workflow = useThreadWorkflow(directory.threads);
@@ -176,10 +185,11 @@ export function ThreadBoardSurface(props: PluginSurfaceProps) {
       savedNameCount={savedNameCount}
       onReloadNameAliases={() => void nameAliases.reload()}
       onGenerateNames={() => generateBoardNames(paseo, renameTargets)}
-      onApplyNames={(suggestions) =>
-        nameAliases.update(mergeNameSuggestions(nameAliases.aliases, renameTargets, suggestions))
+      onApplyNames={(suggestions, targets) =>
+        nameAliases.update(mergeNameSuggestions(nameAliases.aliases, targets, suggestions))
       }
       onRestoreNames={() => nameAliases.update(DEFAULT_NAME_ALIASES)}
+      namingJobStore={props.namingJobStore}
       onPause={workflow.pause}
       onObserveThreads={workflow.observe}
       workflowReady={workflow.ready}
@@ -225,19 +235,27 @@ export function ThreadBoardView({
   onGenerateNames,
   onApplyNames,
   onRestoreNames,
+  namingJobStore: persistentNamingJobStore,
 }: ThreadBoardViewProps) {
   const [localViewOptions, setLocalViewOptions] = useState(DEFAULT_VIEW_OPTIONS);
   const viewOptions = controlledViewOptions ?? localViewOptions;
   const { includeSubagents, showStale, viewMode } = viewOptions;
   const [viewOptionsOpen, setViewOptionsOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
-  const [renameGenerating, setRenameGenerating] = useState(false);
-  const [renameJobTargets, setRenameJobTargets] = useState<readonly BoardNameTarget[]>([]);
-  const [renameSuggestions, setRenameSuggestions] = useState<readonly BoardNameSuggestion[] | null>(
-    null,
+  const localNamingJobStore = useRef<BoardNamingJobStore | null>(null);
+  if (!localNamingJobStore.current) {
+    localNamingJobStore.current = createBoardNamingJobStore();
+  }
+  const namingJobStore = persistentNamingJobStore ?? localNamingJobStore.current;
+  const namingJob = useSyncExternalStore(
+    namingJobStore.subscribe,
+    namingJobStore.getSnapshot,
+    namingJobStore.getSnapshot,
   );
-  const [renameError, setRenameError] = useState<string | null>(null);
-  const renameRequestId = useRef(0);
+  const renameGenerating = namingJob.status === "generating";
+  const renameSuggestions = namingJob.suggestions;
+  const renameJobTargets = namingJob.targets;
+  const renameError = namingJob.error;
   const [listQuery, setListQuery] = useState("");
   const [listLane, setListLane] = useState<"all" | LaneId>("all");
   const [compactLane, setCompactLane] = useState<LaneId>("attention");
@@ -904,26 +922,9 @@ export function ThreadBoardView({
     if (!onGenerateNames || renameGenerating || !nameAliasesReady || renameTargets.length === 0) {
       return;
     }
-    const requestId = renameRequestId.current + 1;
-    renameRequestId.current = requestId;
-    setRenameJobTargets(renameTargets);
-    setRenameSuggestions(null);
-    setRenameError(null);
     setNamingNotice(null);
-    setRenameGenerating(true);
     setRenameOpen(false);
-    void onGenerateNames()
-      .then((suggestions) => {
-        if (renameRequestId.current !== requestId) return;
-        setRenameSuggestions(suggestions);
-      })
-      .catch((cause) => {
-        if (renameRequestId.current !== requestId) return;
-        setRenameError(cause instanceof Error ? cause.message : "Luna could not name this board.");
-      })
-      .finally(() => {
-        if (renameRequestId.current === requestId) setRenameGenerating(false);
-      });
+    namingJobStore.start(renameTargets, onGenerateNames);
   };
 
   const renderRenameButton = (compact = false) => (
@@ -1488,20 +1489,16 @@ export function ThreadBoardView({
           loadError={nameAliasesError}
           onReload={() => onReloadNameAliases?.()}
           onGenerate={startNameGeneration}
-          onApply={onApplyNames}
+          onApply={(suggestions) => onApplyNames(suggestions, renameJobTargets)}
           onRestore={onRestoreNames}
           onApplied={(count) => {
-            setRenameSuggestions(null);
-            setRenameJobTargets([]);
-            setRenameError(null);
+            namingJobStore.clear();
             setNamingNotice(
               `Applied ${count} ${count === 1 ? "board name" : "board names"}. Native Paseo tab titles are unchanged.`,
             );
           }}
           onRestored={() => {
-            setRenameSuggestions(null);
-            setRenameJobTargets([]);
-            setRenameError(null);
+            namingJobStore.clear();
             setNamingNotice("Restored original Thread Board names.");
           }}
         />

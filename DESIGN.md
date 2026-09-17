@@ -25,7 +25,9 @@ the ceremony of a second task tracker.
   board-local boundary and reports exactly how many tabs and grouped parents will be named, then
   closes as soon as generation starts. Inline board status reports progress, readiness, or failure;
   Review opens only when requested and previews every old-to-new pair before applying the complete
-  validated set. Restore originals remains available whenever saved aliases exist.
+  validated set. Keep the job state at the plugin-client contribution lifetime so leaving and
+  reopening the surface cannot discard progress or proposals. Restore originals remains available
+  whenever saved aliases exist.
 
 ## Responsive behavior
 

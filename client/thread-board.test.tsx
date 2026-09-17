@@ -3,7 +3,8 @@ import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
 import contribute from "../index.client";
 import type { BoardItem, BoardThread } from "../shared/board";
-import type { BoardNameSuggestion } from "../shared/naming";
+import type { BoardNameSuggestion, BoardNameTarget } from "../shared/naming";
+import { createBoardNamingJobStore } from "./naming-job-store";
 import { ThreadBoardView } from "./thread-board";
 
 vi.mock("react-native", async () => {
@@ -285,7 +286,31 @@ describe("Thread Board happy path", () => {
     act(() => renderer.unmount());
   });
 
-  it("previews Luna names before applying the complete board-local set", async () => {
+  it("keeps a Luna naming job alive when the board surface is reopened", async () => {
+    const renameTargets: readonly BoardNameTarget[] = [
+      {
+        key: "workspace:release",
+        kind: "workspace",
+        entityId: "release",
+        currentName: "Release work",
+        sourceName: "Release work",
+        projectName: "Paseo",
+        workspaceName: "Release work",
+        siblingNames: ["Please inspect all release automation failures"],
+        seedAgentId: "root",
+      },
+      {
+        key: "agent:root",
+        kind: "thread",
+        entityId: "root",
+        currentName: "Please inspect all release automation failures",
+        sourceName: "Please inspect all release automation failures",
+        projectName: "Paseo",
+        workspaceName: "Release work",
+        siblingNames: [],
+        seedAgentId: "root",
+      },
+    ];
     const suggestions: readonly BoardNameSuggestion[] = [
       { key: "workspace:release", name: "Prepare reliable Paseo release" },
       { key: "agent:root", name: "Audit release automation failures" },
@@ -298,9 +323,9 @@ describe("Thread Board happy path", () => {
         }),
     );
     const onApplyNames = vi.fn(async () => undefined);
-    let renderer: ReactTestRenderer | undefined;
-    act(() => {
-      renderer = create(
+    const namingJobStore = createBoardNamingJobStore();
+    const renderNamingBoard = () =>
+      create(
         <ThreadBoardView
           theme={theme}
           layout={{ compact: false, platform: "web" }}
@@ -311,35 +336,16 @@ describe("Thread Board happy path", () => {
           refreshing={false}
           onRefresh={vi.fn()}
           onArchive={vi.fn(async () => undefined)}
-          renameTargets={[
-            {
-              key: "workspace:release",
-              kind: "workspace",
-              entityId: "release",
-              currentName: "Release work",
-              sourceName: "Release work",
-              projectName: "Paseo",
-              workspaceName: "Release work",
-              siblingNames: ["Please inspect all release automation failures"],
-              seedAgentId: "root",
-            },
-            {
-              key: "agent:root",
-              kind: "thread",
-              entityId: "root",
-              currentName: "Please inspect all release automation failures",
-              sourceName: "Please inspect all release automation failures",
-              projectName: "Paseo",
-              workspaceName: "Release work",
-              siblingNames: [],
-              seedAgentId: "root",
-            },
-          ]}
+          renameTargets={renameTargets}
           onGenerateNames={onGenerateNames}
           onApplyNames={onApplyNames}
           onRestoreNames={vi.fn(async () => undefined)}
+          namingJobStore={namingJobStore}
         />,
       );
+    let renderer: ReactTestRenderer | undefined;
+    act(() => {
+      renderer = renderNamingBoard();
     });
 
     act(() => {
@@ -373,6 +379,14 @@ describe("Thread Board happy path", () => {
     });
     expect(renderer?.root.findByProps({ accessibilityLabel: "Show subagents" })).toBeTruthy();
 
+    act(() => renderer?.unmount());
+    act(() => {
+      renderer = renderNamingBoard();
+    });
+    expect(
+      renderer?.root.findByProps({ children: "Luna is naming in the background" }),
+    ).toBeTruthy();
+
     await act(async () => {
       finishNaming?.(suggestions);
       await Promise.resolve();
@@ -397,7 +411,7 @@ describe("Thread Board happy path", () => {
       renderer?.root.findByProps({ accessibilityLabel: "Apply 2 board names" }).props.onPress();
       await Promise.resolve();
     });
-    expect(onApplyNames).toHaveBeenCalledWith(suggestions);
+    expect(onApplyNames).toHaveBeenCalledWith(suggestions, renameTargets);
     expect(
       renderer?.root.findByProps({
         children: "Applied 2 board names. Native Paseo tab titles are unchanged.",
