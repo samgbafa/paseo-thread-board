@@ -8,6 +8,9 @@ activity drives the board, with one deliberate workflow action for setting revie
 ## What it does
 
 - Places live agent threads into **Needs You**, **Running**, and **Paused**.
+- Mirrors each workspace's rolled-up lane into one native Paseo workspace label: **Needs You**,
+  **Running**, or **Paused**. Thread Board preserves unrelated workspace labels and keeps its label
+  current from daemon lifecycle events even when no Paseo client has the board open.
 - Keeps completed and failed turns in **Needs You** when you open or view them. They leave only when
   you send a follow-up or explicitly choose **Pause**.
 - Automatically moves paused work back to Running or Needs You when a later prompt, run,
@@ -64,7 +67,7 @@ visible; **Show stale** reveals paused stale items.
 
 ## Install
 
-Thread Board requires Paseo 0.8.x. Paseo plugins are trusted code; inspect a plugin before
+Thread Board requires Paseo 0.9.1 or later in the 0.9 release line. Paseo plugins are trusted code; inspect a plugin before
 installing it.
 
 ```bash
@@ -80,9 +83,10 @@ paseo plugin update thread-board
 paseo plugin remove thread-board
 ```
 
-Git installs run no package manager. Thread Board has no external API or analytics. Its small server
-entry point registers host-backed view, workflow, and name-alias settings; thread data and the Luna
-naming helper still use Paseo's public client API.
+Git installs run no package manager. Thread Board has no external API or analytics. Its server entry
+point registers host-backed view, workflow, and name-alias settings. Workspace-label synchronization
+uses Paseo's bundled 0.9.1 daemon client because the public plugin API does not yet expose workspace
+label mutation; thread data and the Luna naming helper continue to use the public client API.
 
 ## Develop
 
@@ -101,6 +105,10 @@ Paseo:
 paseo plugin install "$PWD"
 paseo plugin reload thread-board
 ```
+
+For a daemon on a non-default endpoint, set `THREAD_BOARD_PASEO_URL` in the plugin environment to
+its WebSocket URL. Otherwise Thread Board follows `PASEO_LISTEN` or `PORT`, then falls back to
+`ws://127.0.0.1:6767`.
 
 ## Prior art
 

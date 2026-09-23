@@ -56,7 +56,7 @@ The plugin runs inside Paseo and reads the host's agent, workspace, and project 
 - Lane placement combines Paseo runtime state with the persisted attention/Pause record. There is
   no drag-and-drop or general-purpose task database.
 - The client must update from Paseo's live subscriptions and work on compact and wide layouts.
-- The plugin targets the Paseo 0.8 plugin API.
+- The plugin targets the Paseo 0.9.1 plugin API.
 
 ## Brand Commitments
 

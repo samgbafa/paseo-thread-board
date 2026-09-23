@@ -5,8 +5,8 @@ import { threadBoardViewOptions } from "./shared/view-options";
 import { threadBoardWorkflow } from "./shared/workflow";
 
 describe("Thread Board server contribution", () => {
-  it("registers host-backed view options and workflow documents", () => {
-    const registerSettings = vi.fn();
+  it("registers settings, workflow events, and workspace-label synchronization", async () => {
+    const registerSettings = vi.fn(() => ({ read: vi.fn() }));
     const removeHook = vi.fn();
     const on = vi.fn(() => removeHook);
     const handle = vi.fn();
@@ -17,9 +17,9 @@ describe("Thread Board server contribution", () => {
       [threadBoardViewOptions],
       [threadBoardWorkflow],
     ]);
-    expect(on).toHaveBeenCalledTimes(2);
-    expect(handle).toHaveBeenCalledTimes(2);
-    cleanup();
-    expect(removeHook).toHaveBeenCalledTimes(2);
+    expect(on).toHaveBeenCalledTimes(8);
+    expect(handle).toHaveBeenCalledTimes(3);
+    await cleanup();
+    expect(removeHook).toHaveBeenCalledTimes(8);
   });
 });
