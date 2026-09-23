@@ -14,6 +14,7 @@ import {
   threadBoardWorkflowRpc,
   type WorkflowEvent,
 } from "../shared/workflow";
+import { syncWorkspaceLabelsRpc, workspaceLaneAssignments } from "../shared/workspace-labels";
 
 export interface ThreadWorkflowController {
   threads: readonly BoardThread[];
@@ -21,6 +22,7 @@ export interface ThreadWorkflowController {
   saving: boolean;
   error: string | null;
   errorKind: "load" | "save" | null;
+  workspaceLabelError: string | null;
   pause(threads: readonly BoardThread[]): void;
   observe(threads: readonly BoardThread[]): void;
   reload(): Promise<void>;
@@ -35,11 +37,13 @@ export function useThreadWorkflow(threads: readonly BoardThread[]): ThreadWorkfl
   const write = useRpc(threadBoardWorkflowRpc.write);
   const listEvents = useRpc(listWorkflowEvents);
   const acknowledgeEvents = useRpc(acknowledgeWorkflowEvents);
+  const syncWorkspaceLabels = useRpc(syncWorkspaceLabelsRpc);
   const [document, setDocument] = useState(DEFAULT_THREAD_WORKFLOW);
   const [ready, setReady] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [errorKind, setErrorKind] = useState<"load" | "save" | null>(null);
+  const [workspaceLabelError, setWorkspaceLabelError] = useState<string | null>(null);
   const [eventRevision, setEventRevision] = useState(0);
   const revisionRef = useRef<string | null>(null);
   const savedRef = useRef(DEFAULT_THREAD_WORKFLOW);
@@ -47,6 +51,7 @@ export function useThreadWorkflow(threads: readonly BoardThread[]): ThreadWorkfl
   const writingRef = useRef(false);
   const mountedRef = useRef(true);
   const pendingEventsRef = useRef<readonly WorkflowEvent[]>([]);
+  const workspaceLabelSignatureRef = useRef("");
 
   useEffect(() => {
     mountedRef.current = true;
@@ -207,6 +212,33 @@ export function useThreadWorkflow(threads: readonly BoardThread[]): ThreadWorkfl
     () => applyThreadWorkflow(threads, document),
     [document, threads],
   );
+  const workspaceLabels = useMemo(
+    () => workspaceLaneAssignments(projectedThreads),
+    [projectedThreads],
+  );
+
+  useEffect(() => {
+    if (!ready || workspaceLabels.length === 0) return;
+    const signature = JSON.stringify(workspaceLabels);
+    if (workspaceLabelSignatureRef.current === signature) return;
+    workspaceLabelSignatureRef.current = signature;
+    let canceled = false;
+    void syncWorkspaceLabels({ assignments: workspaceLabels })
+      .then(() => {
+        if (!canceled && mountedRef.current) setWorkspaceLabelError(null);
+      })
+      .catch((cause) => {
+        workspaceLabelSignatureRef.current = "";
+        if (!canceled && mountedRef.current) {
+          setWorkspaceLabelError(
+            cause instanceof Error ? cause.message : "Could not update workspace labels.",
+          );
+        }
+      });
+    return () => {
+      canceled = true;
+    };
+  }, [ready, syncWorkspaceLabels, workspaceLabels]);
 
   return {
     threads: projectedThreads,
@@ -214,6 +246,7 @@ export function useThreadWorkflow(threads: readonly BoardThread[]): ThreadWorkfl
     saving,
     error,
     errorKind,
+    workspaceLabelError,
     pause,
     observe,
     reload,

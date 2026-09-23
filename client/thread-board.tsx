@@ -78,6 +78,7 @@ interface ThreadBoardViewProps extends PluginSurfaceProps {
   workflowSaving?: boolean;
   workflowError?: string | null;
   workflowErrorKind?: "load" | "save" | null;
+  workspaceLabelError?: string | null;
   onReloadWorkflow?(): void;
   viewOptions?: ThreadBoardViewOptions;
   viewOptionsReady?: boolean;
@@ -196,6 +197,7 @@ export function ThreadBoardSurface(props: ThreadBoardSurfaceProps) {
       workflowSaving={workflow.saving}
       workflowError={workflow.error}
       workflowErrorKind={workflow.errorKind}
+      workspaceLabelError={workflow.workspaceLabelError}
       onReloadWorkflow={() => void workflow.reload()}
     />
   );
@@ -218,6 +220,7 @@ export function ThreadBoardView({
   workflowSaving = false,
   workflowError = null,
   workflowErrorKind = null,
+  workspaceLabelError = null,
   onReloadWorkflow,
   viewOptions: controlledViewOptions,
   viewOptionsReady = true,
@@ -1579,6 +1582,12 @@ export function ThreadBoardView({
             </Pressable>
           ) : null}
         </View>
+      ) : null}
+
+      {workspaceLabelError ? (
+        <Text accessibilityRole="alert" style={styles.viewOptionsError}>
+          Workspace labels could not be updated. {workspaceLabelError}
+        </Text>
       ) : null}
 
       {archiveError ? (

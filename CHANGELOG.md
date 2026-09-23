@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.0 — 2026-09-23
+
+- Add Paseo 0.9.1 compatibility.
+- Mirror each workspace's Thread Board lane into a native **Needs You**, **Running**, or **Paused**
+  workspace label while preserving unrelated labels.
+- Reconcile native workspace labels from daemon lifecycle events so they stay current without an
+  open Thread Board client.
+
 ## 0.8.3 — 2026-09-17
 
 - Accept Luna's complete key-to-name JSON response in addition to the requested names-array shape,
