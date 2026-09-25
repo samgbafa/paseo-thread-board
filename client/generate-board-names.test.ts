@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { PARENT_AGENT_ID_LABEL } from "../shared/board";
 import type { BoardNameTarget } from "../shared/naming";
 import { LUNA_NAMING_PROVIDER } from "../shared/naming";
 import { generateBoardNames } from "./generate-board-names";
@@ -41,10 +42,18 @@ describe("Luna naming agent", () => {
     expect(paseo.agents.create).toHaveBeenCalledWith(
       expect.objectContaining({
         cwd: "/workspace/paseo",
-        parent: seed,
         title: "Name Thread Board threads",
         config: { provider: LUNA_NAMING_PROVIDER, thinkingOptionId: "low" },
+        labels: {
+          "thread-board.role": "naming-helper",
+          [PARENT_AGENT_ID_LABEL]: "root",
+        },
       }),
+    );
+    // The daemon rejects `parent` unless the seed agent is loaded, and board
+    // threads are often dormant, so the helper links through its label only.
+    expect(paseo.agents.create).toHaveBeenCalledWith(
+      expect.not.objectContaining({ parent: expect.anything() }),
     );
     expect(run).toHaveBeenCalledWith(expect.stringContaining("Rename every Thread Board item"), {
       timeoutMs: 180_000,
