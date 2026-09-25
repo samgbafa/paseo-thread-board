@@ -1,4 +1,5 @@
 import type { usePaseo } from "@getpaseo/plugin/client";
+import { PARENT_AGENT_ID_LABEL } from "../shared/board";
 import {
   BOARD_NAMES_OUTPUT_SCHEMA,
   type BoardNameSuggestion,
@@ -21,13 +22,17 @@ export async function generateBoardNames(
   const cwd = refreshed?.agent.cwd?.trim();
   if (!cwd) throw new Error("Paseo could not find a working directory for the naming agent.");
 
+  // Link to the seed by label rather than `parent`: the daemon only resolves
+  // `parent` against loaded agents, and most board threads are dormant.
   const helper = await paseo.agents.create({
     config: { provider: LUNA_NAMING_PROVIDER, thinkingOptionId: "low" },
     cwd,
-    parent: seed,
     title: "Name Thread Board threads",
     outputSchema: BOARD_NAMES_OUTPUT_SCHEMA,
-    labels: { "thread-board.role": "naming-helper" },
+    labels: {
+      "thread-board.role": "naming-helper",
+      [PARENT_AGENT_ID_LABEL]: targets[0].seedAgentId,
+    },
   });
 
   try {

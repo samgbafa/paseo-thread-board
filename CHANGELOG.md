@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.1 — 2026-09-25
+
+- Start Luna's naming helper even when the board's first thread is dormant. The helper now links to
+  that thread through the parent label instead of `parent`, which the daemon only resolves for
+  loaded agents ("Caller agent … not found").
+
 ## 0.9.0 — 2026-09-23
 
 - Add Paseo 0.9.1 compatibility.
